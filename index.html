@@ -1058,7 +1058,15 @@ function clipHalfPlane(P,m,sgn){
     if(ci){ if(!pi) out.push(cut(prv,cur)); out.push(cur.slice()); }
     else if(pi) out.push(cut(prv,cur));
   }
-  return out;
+  // The fold often runs exactly through existing vertices, which yields a cut point
+  // on top of one. Drop coincident neighbours so no zero-length segment reaches the DXF.
+  const eps=1e-6, clean=[];
+  for(const q of out){
+    const last=clean[clean.length-1];
+    if(!last||Math.hypot(q[0]-last[0],q[1]-last[1])>eps) clean.push(q);
+  }
+  while(clean.length>1&&Math.hypot(clean[0][0]-clean[clean.length-1][0],clean[0][1]-clean[clean.length-1][1])<=eps) clean.pop();
+  return clean;
 }
 // Keep the half of the piece that `p` falls in; marks on the far side go with it.
 function splitAtMirror(p){
