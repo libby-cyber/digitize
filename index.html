@@ -1380,6 +1380,26 @@ $('another').onclick=()=>{ if(!S.rect){toast('Start with a photo.');return;} S.s
 $('newPhoto').onclick=()=>go('photo');
 
 go('photo');
+
+// Remember the style name and units between sessions. Safari discards the page
+// under memory pressure and the home-screen app starts cold, which otherwise
+// wipes whatever was typed on the export step.
+(function(){
+  var K='digitize.prefs';
+  function load(){
+    try{
+      var s=JSON.parse(localStorage.getItem(K)||'{}');
+      if(s.style) $('styleName').value=s.style;
+      if(s.units) $('units').value=s.units;
+    }catch(e){}
+  }
+  function save(){
+    try{ localStorage.setItem(K,JSON.stringify({style:$('styleName').value,units:$('units').value})); }catch(e){}
+  }
+  load();
+  $('styleName').addEventListener('input',save);
+  $('units').addEventListener('change',save);
+})();
 </script>
 
 </body>
