@@ -504,7 +504,7 @@ function makeDXF(pieces,opt){
     for(const v of vs){g(0,'VERTEX');g(8,'1');g(10,n(v.xy[0]));g(20,n(v.xy[1]));g(30,n(0));}
     g(0,'SEQEND');g(8,'1');
     for(const v of p.verts){g(0,'POINT');g(8,v.turn?'2':'3');g(10,n(v.xy[0]));g(20,n(v.xy[1]));g(30,n(0));}
-    for(const q of p.notches){g(0,'LINE');g(8,'4');g(10,n(q[0]));g(20,n(q[1]));g(30,n(0));g(11,n(q[2]));g(21,n(q[3]));g(31,n(0));}
+    for(const q of p.notches){g(0,'POINT');g(8,'4');g(10,n(q[0]));g(20,n(q[1]));g(30,n(0));}
     const q=p.grain; g(0,'LINE');g(8,'7');g(10,n(q[0]));g(20,n(q[1]));g(30,n(0));g(11,n(q[2]));g(21,n(q[3]));g(31,n(0));
     for(const q of p.lines||[]){g(0,'LINE');g(8,'8');g(10,n(q[0]));g(20,n(q[1]));g(30,n(0));g(11,n(q[2]));g(21,n(q[3]));g(31,n(0));}
     for(const d of p.drills){g(0,'POINT');g(8,'13');g(10,n(d[0]));g(20,n(d[1]));g(30,n(0));}
