@@ -1352,7 +1352,8 @@ function buildPreview(){
   S.preview={canvas:c,w:W,h:H};
 }
 function dxfText(){return makeDXF(S.pieces,{units:$('units').value,style:$('styleName').value});}
-function fileName(){return cleanName($('styleName').value,'patterns')+'.dxf';}
+function dateStamp(){const d=new Date();return String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');}
+function fileName(){return cleanName($('styleName').value,'patterns')+'-'+dateStamp()+'.dxf';}
 $('download').onclick=()=>{
   const blob=new Blob([dxfText()],{type:'application/dxf'}), url=URL.createObjectURL(blob);
   const a=document.createElement('a');a.href=url;a.download=fileName();document.body.appendChild(a);a.click();a.remove();
