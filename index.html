@@ -685,7 +685,7 @@ const HINTS={
   grain:'Drag along the grainline. Lines within 2° of the grid snap straight.',
   drill:'Tap where each drill hole goes.',
   line:'Drag to draw a line inside the piece, such as dart legs or placement lines. Ends snap to the edge, other line ends, and drill holes.',
-  edge:'Tap near the edge to select the closest point; it lights up blue while your finger is down. Tap a second point and choose Straighten between to replace everything between them with a straight line (this also closes a dart). Drag near the edge to move a point, or to add one where there isn\'t a point.',
+  edge:'Tap along a straight stretch, away from any point, to select the whole run at once, then tap Straighten between to flatten it. Tap right on a point to select just that one; tap a second point and Straighten between replaces everything in between with a straight line (this also closes a dart). Drag near the edge to move a point, or to add one where there isn\'t a point.',
   measure:'Drag between two points to check a measurement against your ruler.',
   erase:'Tap a notch, drill hole, line, or grainline to remove it. To remove outline points, use Edit edge.'
 };
@@ -1004,6 +1004,11 @@ function endDrag(e){
   }
   if(d.type==='vertex'){
     if(d.moved||d.added){pushHist(d.st);S.edited=true;S.selV=d.i;S.selB=-1;}
+    else if(!d.nearV&&d.proj){
+      const fr=flatRun(S.outline,d.proj.seg,0.05*S.ppi);
+      if(fr&&fr.count>0){S.selV=fr.i;S.selB=fr.j;toast(`Straight run selected: ${fr.count} point${fr.count===1?'':'s'} to drop. Tap Straighten between to flatten it.`);}
+      else {S.selV=d.i;S.selB=-1;toast('That stretch is already straight.');}
+    }
     else if(S.selV<0) S.selV=d.i;
     else if(d.i===S.selV||d.i===S.selB){S.selV=-1;S.selB=-1;}
     else if(S.selB<0) S.selB=d.i;
@@ -1281,6 +1286,31 @@ function updateMarkStatus(){
 function shortPath(i,j,n){ // indices strictly between i and j along the shorter way round
   const f=[],b=[]; for(let k=(i+1)%n;k!==j;k=(k+1)%n) f.push(k); for(let k=(i-1+n)%n;k!==j;k=(k-1+n)%n) b.push(k);
   return f.length<=b.length?f:b;
+}
+// Grow the straight run of outline points containing segment `seg`: walk outwards
+// while every point in between stays within `tol` of the chord. Capped at half the
+// outline so shortPath() agrees with the forward span we measured.
+function flatRun(P,seg,tol){
+  const n=P.length; if(n<4) return null;
+  const fwd=(i,j)=>{const a=[];for(let k=(i+1)%n;k!==j;k=(k+1)%n)a.push(k);return a;};
+  const dev=(i,j)=>{
+    const ax=P[i][0],ay=P[i][1],bx=P[j][0],by=P[j][1];
+    const dx=bx-ax,dy=by-ay,L=Math.hypot(dx,dy)||1;
+    let m=0; for(const k of fwd(i,j)) m=Math.max(m,Math.abs((P[k][0]-ax)*dy-(P[k][1]-ay)*dx)/L);
+    return m;
+  };
+  const cap=Math.floor(n/2)-1;
+  let i=seg,j=(seg+1)%n;
+  for(let guard=0;guard<n;guard++){
+    const ni=(i-1+n)%n,nj=(j+1)%n;
+    const okI=ni!==j&&fwd(ni,j).length<=cap&&dev(ni,j)<=tol;
+    const okJ=nj!==i&&fwd(i,nj).length<=cap&&dev(i,nj)<=tol;
+    if(okI&&okJ){ if(dev(ni,j)<=dev(i,nj)) i=ni; else j=nj; }
+    else if(okI) i=ni;
+    else if(okJ) j=nj;
+    else break;
+  }
+  return {i,j,count:fwd(i,j).length};
 }
 $('straightBetween').onclick=()=>{
   if(S.selV<0||S.selB<0) return;
