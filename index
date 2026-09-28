@@ -1,0 +1,1385 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Pattern capture</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Patterns">
+<meta name="theme-color" content="#FFFFFF">
+<style>
+:root{
+  --mat:#244A3F; --mat-line:rgba(255,255,255,.07);
+  --paper:#FFFFFF; --dot:#D4DEEC; --ink:#23262A; --muted:#61695F;
+  --notch:#D2372C; --chalk:#2F6FD0; --rule:#E2E6E3; --field:#C7CDC8;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  font-family:"Avenir Next","Avenir","Segoe UI",system-ui,sans-serif;
+  color:var(--ink); background:var(--mat);
+  display:grid; grid-template-rows:auto 1fr auto; height:100vh; height:100dvh; overflow:hidden;
+  -webkit-text-size-adjust:100%;
+}
+header{background:var(--paper);padding:10px 14px 0;border-bottom:1px solid var(--rule)}
+h1{font-size:17px;font-weight:600;margin:0 0 4px;letter-spacing:.01em}
+nav{display:flex;gap:2px;overflow-x:auto}
+nav button{
+  flex:1;min-width:62px;border:0;background:none;padding:8px 2px 10px;font:inherit;font-size:13px;
+  color:var(--muted);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap
+}
+nav button .n{font-variant-numeric:tabular-nums;font-weight:700;margin-right:3px}
+nav button[aria-current=step]{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+nav button:disabled{opacity:.35;cursor:default}
+nav button:focus-visible,.btn:focus-visible,.tools button:focus-visible{outline:2px solid var(--chalk);outline-offset:2px}
+
+#stage{
+position:relative;overflow:hidden;min-height:0;
+background-color:var(–mat);
+background-image:linear-gradient(var(–mat-line) 1px,transparent 1px),linear-gradient(90deg,var(–mat-line) 1px,transparent 1px);
+background-size:24px 24px;
+display:flex;align-items:center;justify-content:center;
+}
+#view{touch-action:none;display:none;position:absolute;inset:0;width:100%;height:100%}
+#stage{touch-action:none}
+#fitBtn{position:absolute;right:10px;bottom:10px;display:none;font:inherit;font-size:14px;font-weight:600;padding:8px 14px;border-radius:18px;border:0;background:rgba(255,255,255,.92);color:var(–ink);box-shadow:0 2px 8px rgba(0,0,0,.3);cursor:pointer}
+#empty{color:rgba(255,255,255,.8);text-align:center;max-width:290px;font-size:15px;line-height:1.5;padding:20px}
+#loupe{position:absolute;display:none;width:140px;height:140px;border-radius:50%;border:3px solid #fff;box-shadow:0 4px 16px rgba(0,0,0,.45);pointer-events:none;background:var(–mat)}
+#busy{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(20,40,34,.55);color:#fff;font-size:15px}
+
+#panel{
+background:var(–paper);
+background-image:radial-gradient(var(–dot) 1px,transparent 1.3px);background-size:16px 16px;
+border-top:1px solid var(–rule);max-height:48vh;max-height:48dvh;overflow-y:auto;
+padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+}
+.pane{display:none}.pane.on{display:block}
+.pane p{margin:0 0 12px;font-size:15px;line-height:1.45;max-width:62ch}
+.row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
+label.f{display:flex;flex-direction:column;font-size:13px;color:var(–muted);gap:4px;flex:1;min-width:88px}
+label.f .v{color:var(–ink);font-variant-numeric:tabular-nums}
+label.chk{display:flex;gap:8px;align-items:center;font-size:14px;margin-bottom:12px}
+input[type=text],input[type=number],select{
+font:inherit;font-size:16px;padding:9px 10px;border:1px solid var(–field);border-radius:8px;background:#fff;color:var(–ink);width:100%
+}
+input[type=range]{width:100%;accent-color:var(–ink)}
+.btn{
+font:inherit;font-size:15px;font-weight:600;border-radius:10px;padding:11px 16px;
+border:1px solid var(–ink);background:var(–ink);color:#fff;cursor:pointer
+}
+.btn.ghost{background:#fff;color:var(–ink)}
+.btn:disabled{opacity:.35;cursor:default}
+.btn.wide{width:100%}
+.tools{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;background:#EDF0EE;padding:4px;border-radius:10px;margin-bottom:8px}
+.tools button{
+font:inherit;font-size:12.5px;border:0;background:none;border-radius:7px;padding:8px 2px;color:var(–ink);
+display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer
+}
+.tools button[aria-pressed=true]{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.18);font-weight:600}
+.sw{width:11px;height:11px;border-radius:50%;border:2px solid currentColor}
+.status{font-size:13px;color:var(–muted);margin:0 0 12px;font-variant-numeric:tabular-nums;line-height:1.4}
+.status.warn{color:var(–notch)}
+.pieces{list-style:none;padding:0;margin:0 0 14px;background:#fff;border:1px solid var(–rule);border-radius:10px}
+.pieces li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(–rule);font-size:14px}
+.pieces li:last-child{border-bottom:0}
+.pieces .meta{color:var(–muted);font-size:12.5px;font-variant-numeric:tabular-nums}
+.pieces button{font:inherit;font-size:13px;background:none;border:0;color:var(–notch);cursor:pointer;padding:6px}
+.fileBtn{position:relative;overflow:hidden;display:inline-block}
+.fileBtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+#toast{
+position:fixed;left:50%;top:90px;transform:translateX(-50%);background:var(–ink);color:#fff;padding:10px 14px;
+border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:10;max-width:88vw;text-align:center
+}
+#pasteZone{
+display:none;border:2px dashed var(–field);border-radius:10px;padding:18px 12px;text-align:center;
+font-size:15px;color:var(–muted);background:#fff;min-height:60px;outline:none;-webkit-user-select:text;user-select:text
+}
+#pasteZone:focus{border-color:var(–chalk);color:var(–ink)}
+#pasteZone img{max-width:80px;max-height:80px;display:block;margin:8px auto 0}
+#dxfText{width:100%;height:120px;font-size:11px;font-family:ui-monospace,Menlo,monospace;display:none;margin-top:10px}
+@media (prefers-reduced-motion:reduce){#toast{transition:none}}
+</style>
+
+</head>
+<body>
+<header>
+  <h1>Pattern capture</h1>
+  <nav id="nav">
+    <button data-step="photo"><span class="n">1</span>Photo</button>
+    <button data-step="calibrate"><span class="n">2</span>Corners</button>
+    <button data-step="trace"><span class="n">3</span>Trace</button>
+    <button data-step="mark"><span class="n">4</span>Mark</button>
+    <button data-step="export"><span class="n">5</span>Export</button>
+  </nav>
+</header>
+
+<main id="stage">
+  <div id="empty">Lay the pattern flat on the grid mat and photograph it from directly above.</div>
+  <canvas id="view"></canvas>
+  <canvas id="loupe" width="280" height="280"></canvas>
+  <button id="fitBtn">Fit to screen</button>
+  <div id="busy">Working…</div>
+</main>
+
+<section id="panel">
+  <div class="pane" data-pane="photo">
+    <p>Shoot straight down with the 1x lens, in even light. Keep grid visible on every side of the piece, and nudge the piece so its straight edges don't sit right on a grid line.</p>
+    <div class="row">
+      <span class="fileBtn btn">Take photo<input id="camFile" type="file" accept="image/*" capture="environment"></span>
+      <span class="fileBtn btn ghost">Choose photo<input id="file" type="file" accept="image/*"></span>
+      <button class="btn ghost" id="pasteBtn">Paste photo</button>
+    </div>
+    <div id="pasteZone" contenteditable="true" aria-label="Paste a photo here">Touch and hold here, then choose Paste.</div>
+  </div>
+
+  <div class="pane" data-pane="calibrate">
+    <p>A box is placed around the piece automatically. Drag anywhere with one finger to move the nearest corner; it snaps to a grid crossing when you let go. Use two fingers to zoom and move around.</p>
+    <div class="row">
+      <label class="f">Squares across<input id="rectW" type="number" inputmode="decimal" placeholder="e.g. 12" min="0.5" step="0.5"></label>
+      <label class="f">Squares down<input id="rectH" type="number" inputmode="decimal" placeholder="e.g. 18" min="0.5" step="0.5"></label>
+      <label class="f">Main square size<select id="sqSize">
+        <option value="1" selected>1 in</option>
+        <option value="0.5">1/2 in</option>
+        <option value="0.25">1/4 in</option>
+        <option value="0.39370079">1 cm</option>
+      </select></label>
+    </div>
+    <label class="chk"><input type="checkbox" id="gridSnap" checked> Snap points to grid intersections</label>
+    <p class="status" id="calStatus">0 of 4 points</p>
+    <div class="row">
+      <button class="btn ghost" id="clearPts">Reset box</button>
+      <button class="btn" id="straighten" disabled>Straighten photo</button>
+    </div>
+  </div>
+
+  <div class="pane" data-pane="trace">
+    <p>Tap the piece to trace. If the blue fill doesn't match the paper, adjust detection below.</p>
+    <div class="row">
+      <label class="f">Paper detection <span class="v" id="thrV"></span><input id="thr" type="range" min="0" max="255" value="128"></label>
+      <label class="f">Ignore grid lines <span class="v" id="openV"></span><input id="openR" type="range" min="0" max="12" value="3"></label>
+    </div>
+    <label class="chk"><input type="checkbox" id="invert"> Paper is darker than the mat</label>
+    <p class="status" id="traceStatus"></p>
+    <button class="btn wide" id="traceBtn" disabled>Trace outline</button>
+  </div>
+
+  <div class="pane" data-pane="mark">
+    <div class="tools" id="tools">
+      <button data-tool="notch" aria-pressed="true"><span class="sw" style="color:var(--notch)"></span>Notch</button>
+      <button data-tool="grain" aria-pressed="false"><span class="sw" style="color:var(--chalk)"></span>Grainline</button>
+      <button data-tool="drill" aria-pressed="false"><span class="sw" style="color:var(--chalk);border-radius:2px"></span>Drill hole</button>
+      <button data-tool="line" aria-pressed="false"><span class="sw" style="color:#6B4FA0;border-radius:1px;height:3px;width:14px;background:currentColor;border:0"></span>Line</button>
+      <button data-tool="edge" aria-pressed="false"><span class="sw" style="color:var(--ink);border-radius:2px"></span>Edit edge</button>
+      <button data-tool="measure" aria-pressed="false"><span class="sw" style="color:#E0A21A"></span>Measure</button>
+      <button data-tool="erase" aria-pressed="false"><span class="sw" style="color:var(--muted);border-style:dashed"></span>Erase</button>
+    </div>
+    <p class="status" id="markStatus"></p>
+    <div class="row">
+      <button class="btn ghost" id="autoGrain">Straight grainline</button>
+      <button class="btn ghost" id="delPt" style="display:none">Delete point</button>
+      <button class="btn ghost" id="straightBetween" style="display:none">Straighten between</button>
+    </div>
+    <div class="row" id="scaleRow" style="display:none">
+      <label class="f" style="flex:2">Actual length of this measurement (in)<input id="trueLen" type="number" inputmode="decimal" step="0.125" placeholder="e.g. 10"></label>
+      <button class="btn ghost" id="fixScale">Fix scale</button>
+      <button class="btn ghost" id="undo">Undo</button>
+    </div>
+    <div class="row">
+      <label class="f" style="flex:2">Piece name<input id="pName" type="text" placeholder="FRONT" autocapitalize="characters"></label>
+      <label class="f">Size<input id="pSize" type="text" placeholder="M"></label>
+      <label class="f">Quantity<input id="pQty" type="number" inputmode="numeric" value="1" min="1"></label>
+    </div>
+    <div class="row">
+      <label class="f">Outline smoothing <span class="v" id="smV"></span><input id="smooth" type="range" min="0.1" max="1.5" step="0.05" value="0.5"></label>
+      <label class="f">Notch depth (in)<input id="nDepth" type="number" inputmode="decimal" value="0.25" step="0.05" min="0.05"></label>
+    </div>
+    <button class="btn wide" id="savePiece">Save piece</button>
+  </div>
+
+  <div class="pane" data-pane="export">
+    <ul class="pieces" id="pieceList"></ul>
+    <div class="row">
+      <label class="f" style="flex:2">Style name<input id="styleName" type="text" placeholder="STYLE-001" autocapitalize="characters"></label>
+      <label class="f">Units<select id="units"><option value="in">Inches</option><option value="mm">Millimeters</option></select></label>
+    </div>
+    <div class="row">
+      <button class="btn" id="download">Download DXF</button>
+      <button class="btn ghost" id="copy">Copy DXF</button>
+      <button class="btn ghost" id="share" style="display:none">Share DXF</button>
+    </div>
+    <div class="row">
+      <button class="btn ghost" id="another">Trace another piece from this photo</button>
+      <button class="btn ghost" id="newPhoto">New photo</button>
+    </div>
+    <textarea id="dxfText" readonly></textarea>
+  </div>
+</section>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/*CORE-START*/
+// ---------- geometry ----------
+function solveLinear(A,b){
+  const n=b.length, M=A.map((r,i)=>[...r,b[i]]);
+  for(let c=0;c<n;c++){
+    let piv=c;
+    for(let r=c+1;r<n;r++) if(Math.abs(M[r][c])>Math.abs(M[piv][c])) piv=r;
+    [M[c],M[piv]]=[M[piv],M[c]];
+    const d=M[c][c];
+    if(Math.abs(d)<1e-12) throw new Error('Those four points don\'t form a usable rectangle. Try again.');
+    for(let k=c;k<=n;k++) M[c][k]/=d;
+    for(let r=0;r<n;r++){ if(r===c) continue; const f=M[r][c]; if(!f) continue; for(let k=c;k<=n;k++) M[r][k]-=f*M[c][k]; }
+  }
+  return M.map(r=>r[n]);
+}
+function homography(src,dst){ // maps src -> dst
+  const A=[],b=[];
+  for(let i=0;i<4;i++){
+    const [x,y]=src[i],[u,v]=dst[i];
+    A.push([x,y,1,0,0,0,-u*x,-u*y]); b.push(u);
+    A.push([0,0,0,x,y,1,-v*x,-v*y]); b.push(v);
+  }
+  return [...solveLinear(A,b),1];
+}
+function orderCorners(pts){ // -> [TL,TR,BR,BL] as seen in the image
+  const cx=pts.reduce((s,p)=>s+p.x,0)/pts.length, cy=pts.reduce((s,p)=>s+p.y,0)/pts.length;
+  const s=[...pts].sort((a,b)=>Math.atan2(a.y-cy,a.x-cx)-Math.atan2(b.y-cy,b.x-cx));
+  let k=0; for(let i=1;i<4;i++) if(s[i].x+s[i].y<s[k].x+s[k].y) k=i;
+  return [0,1,2,3].map(i=>s[(k+i)%4]);
+}
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+
+// ---------- raster ----------
+function rectifyPixels(sd,sw,sh,H,W,Hh){
+  const out=new Uint8ClampedArray(W*Hh*4);
+  for(let v=0;v<Hh;v++){
+    const vy=v+.5;
+    for(let u=0;u<W;u++){
+      const ux=u+.5, w=H[6]*ux+H[7]*vy+H[8];
+      const x=(H[0]*ux+H[1]*vy+H[2])/w-.5, y=(H[3]*ux+H[4]*vy+H[5])/w-.5;
+      const o=(v*W+u)*4; out[o+3]=255;
+      if(!(x>=0&&y>=0&&x<sw-1&&y<sh-1)) continue;
+      const x0=x|0,y0=y|0,fx=x-x0,fy=y-y0;
+      const i00=(y0*sw+x0)*4,i10=i00+4,i01=i00+sw*4,i11=i01+4;
+      for(let c=0;c<3;c++){
+        out[o+c]=(sd[i00+c]*(1-fx)+sd[i10+c]*fx)*(1-fy)+(sd[i01+c]*(1-fx)+sd[i11+c]*fx)*fy;
+      }
+    }
+  }
+  return out;
+}
+function computeScore(px,n){ // bright + unsaturated = paper
+  const s=new Uint8Array(n);
+  for(let i=0;i<n;i++){
+    const r=px[i*4],g=px[i*4+1],b=px[i*4+2];
+    const mx=Math.max(r,g,b), mn=Math.min(r,g,b);
+    const lum=0.299*r+0.587*g+0.114*b, sat=mx?(mx-mn)/mx:0;
+    s[i]=Math.max(0,Math.min(255,Math.round(lum*(1-sat))));
+  }
+  return s;
+}
+function otsu(s){
+  const h=new Float64Array(256); for(let i=0;i<s.length;i++) h[s[i]]++;
+  const n=s.length; let sum=0; for(let i=0;i<256;i++) sum+=i*h[i];
+  let sB=0,wB=0,best=0,thr=128;
+  for(let t=0;t<256;t++){
+    wB+=h[t]; if(!wB) continue; const wF=n-wB; if(!wF) break;
+    sB+=t*h[t]; const mB=sB/wB, mF=(sum-sB)/wF, v=wB*wF*(mB-mF)*(mB-mF);
+    if(v>best){best=v;thr=t+1;}
+  }
+  return thr;
+}
+function binarize(s,thr,invert){
+  const m=new Uint8Array(s.length);
+  for(let i=0;i<s.length;i++) m[i]=invert?(s[i]<thr?1:0):(s[i]>=thr?1:0);
+  return m;
+}
+function integral(m,w,h){
+  const W=w+1, I=new Int32Array(W*(h+1));
+  for(let y=0;y<h;y++){ let row=0; for(let x=0;x<w;x++){ row+=m[y*w+x]; I[(y+1)*W+x+1]=I[y*W+x+1]+row; } }
+  return I;
+}
+function morph(m,w,h,r,dil){
+  const I=integral(m,w,h), W=w+1, out=new Uint8Array(w*h);
+  for(let y=0;y<h;y++){
+    const y0=Math.max(0,y-r), y1=Math.min(h-1,y+r);
+    for(let x=0;x<w;x++){
+      const x0=Math.max(0,x-r), x1=Math.min(w-1,x+r);
+      const sum=I[(y1+1)*W+x1+1]-I[y0*W+x1+1]-I[(y1+1)*W+x0]+I[y0*W+x0];
+      out[y*w+x]=dil?(sum>0?1:0):(sum===(x1-x0+1)*(y1-y0+1)?1:0);
+    }
+  }
+  return out;
+}
+function openMask(m,w,h,r){ return r>0?morph(morph(m,w,h,r,false),w,h,r,true):m; }
+function closeMask(m,w,h,r){ return r>0?morph(morph(m,w,h,r,true),w,h,r,false):m; }
+function fillHoles(m,w,h){
+  const n=w*h, reach=new Uint8Array(n), st=new Int32Array(n); let sp=0;
+  const push=i=>{ if(!m[i]&&!reach[i]){reach[i]=1;st[sp++]=i;} };
+  for(let x=0;x<w;x++){push(x);push((h-1)*w+x);}
+  for(let y=0;y<h;y++){push(y*w);push(y*w+w-1);}
+  while(sp){
+    const i=st[--sp], x=i%w, y=(i/w)|0;
+    if(x>0)push(i-1); if(x<w-1)push(i+1); if(y>0)push(i-w); if(y<h-1)push(i+w);
+  }
+  const out=new Uint8Array(n); for(let i=0;i<n;i++) out[i]=reach[i]?0:1;
+  return out;
+}
+function labelComponents(m,w,h,minArea){
+  const n=w*h, lab=new Int32Array(n), st=new Int32Array(n), comps=[]; let next=0;
+  for(let i=0;i<n;i++){
+    if(!m[i]||lab[i]) continue;
+    next++; let sp=0; lab[i]=next; st[sp++]=i;
+    const c={id:next,area:0,minX:w,minY:h,maxX:0,maxY:0,sx:i%w,sy:(i/w)|0};
+    while(sp){
+      const j=st[--sp], x=j%w, y=(j/w)|0;
+      c.area++; if(x<c.minX)c.minX=x; if(x>c.maxX)c.maxX=x; if(y<c.minY)c.minY=y; if(y>c.maxY)c.maxY=y;
+      if(x>0&&m[j-1]&&!lab[j-1]){lab[j-1]=next;st[sp++]=j-1;}
+      if(x<w-1&&m[j+1]&&!lab[j+1]){lab[j+1]=next;st[sp++]=j+1;}
+      if(y>0&&m[j-w]&&!lab[j-w]){lab[j-w]=next;st[sp++]=j-w;}
+      if(y<h-1&&m[j+w]&&!lab[j+w]){lab[j+w]=next;st[sp++]=j+w;}
+    }
+    c.touches=c.minX===0||c.minY===0||c.maxX===w-1||c.maxY===h-1;
+    if(c.area>=minArea) comps.push(c);
+  }
+  return {labels:lab,comps};
+}
+// Marching-squares perimeter along pixel edges (corner coordinates)
+function traceComponent(lab,w,h,id,sx,sy){
+  const on=(x,y)=>x>=0&&y>=0&&x<w&&y<h&&lab[y*w+x]===id;
+  const UP=1,DOWN=2,LEFT=3,RIGHT=4;
+  let x=sx,y=sy,prev=0,guard=0; const pts=[], lim=4*w*h+16;
+  do{
+    let st=0;
+    if(on(x-1,y-1))st|=1; if(on(x,y-1))st|=2; if(on(x-1,y))st|=4; if(on(x,y))st|=8;
+    let nx;
+    switch(st){
+      case 1:case 5:case 13: nx=UP;break;
+      case 8:case 10:case 11: nx=DOWN;break;
+      case 4:case 12:case 14: nx=LEFT;break;
+      case 2:case 3:case 7: nx=RIGHT;break;
+      case 6: nx=prev===UP?LEFT:RIGHT;break;
+      case 9: nx=prev===RIGHT?UP:DOWN;break;
+      default: throw new Error('Tracing lost the edge.');
+    }
+    pts.push([x,y]);
+    if(nx===UP)y--; else if(nx===DOWN)y++; else if(nx===LEFT)x--; else x++;
+    prev=nx;
+    if(++guard>lim) throw new Error('Outline is too complex to trace.');
+  }while(x!==sx||y!==sy);
+  return pts;
+}
+function smoothClosed(pts,k,iters){
+  let a=pts; const n=pts.length;
+  for(let it=0;it<iters;it++){
+    const b=new Array(n);
+    for(let i=0;i<n;i++){
+      let sx=0,sy=0;
+      for(let j=-k;j<=k;j++){ const p=a[(i+j+n)%n]; sx+=p[0]; sy+=p[1]; }
+      b[i]=[sx/(2*k+1),sy/(2*k+1)];
+    }
+    a=b;
+  }
+  return a;
+}
+function dp(pts,tol){
+  const n=pts.length; if(n<3) return pts.slice();
+  const keep=new Uint8Array(n); keep[0]=keep[n-1]=1; const st=[[0,n-1]];
+  while(st.length){
+    const [a,b]=st.pop(); const [ax,ay]=pts[a],[bx,by]=pts[b];
+    const dx=bx-ax,dy=by-ay,L=Math.hypot(dx,dy); let md=-1,mi=-1;
+    for(let i=a+1;i<b;i++){
+      const [px,py]=pts[i];
+      const d=L?Math.abs(dy*(px-ax)-dx*(py-ay))/L:Math.hypot(px-ax,py-ay);
+      if(d>md){md=d;mi=i;}
+    }
+    if(md>tol){keep[mi]=1;st.push([a,mi],[mi,b]);}
+  }
+  return pts.filter((_,i)=>keep[i]);
+}
+function simplifyClosed(pts,tol){
+  let far=0,fd=-1;
+  for(let i=1;i<pts.length;i++){ const d=Math.hypot(pts[i][0]-pts[0][0],pts[i][1]-pts[0][1]); if(d>fd){fd=d;far=i;} }
+  const A=dp(pts.slice(0,far+1),tol), B=dp([...pts.slice(far),pts[0]],tol);
+  return [...A.slice(0,-1),...B.slice(0,-1)];
+}
+function pointInPoly(poly,x,y){
+  let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const [xi,yi]=poly[i],[xj,yj]=poly[j];
+    if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi)) inside=!inside;
+  }
+  return inside;
+}
+function nearestOnPoly(poly,x,y){
+  let best={d:Infinity};
+  for(let i=0;i<poly.length;i++){
+    const [ax,ay]=poly[i],[bx,by]=poly[(i+1)%poly.length];
+    const dx=bx-ax,dy=by-ay,L2=dx*dx+dy*dy;
+    let t=L2?((x-ax)*dx+(y-ay)*dy)/L2:0; t=Math.max(0,Math.min(1,t));
+    const px=ax+t*dx,py=ay+t*dy,d=Math.hypot(x-px,y-py);
+    if(d<best.d) best={d,seg:i,t,x:px,y:py};
+  }
+  return best;
+}
+function inwardNormal(poly,seg,x,y){
+  const [ax,ay]=poly[seg],[bx,by]=poly[(seg+1)%poly.length];
+  const L=Math.hypot(bx-ax,by-ay)||1; let nx=-(by-ay)/L, ny=(bx-ax)/L;
+  if(!pointInPoly(poly,x+nx*2,y+ny*2)){nx=-nx;ny=-ny;}
+  return [nx,ny];
+}
+function turnAngle(a,b,c){
+  const ux=b[0]-a[0],uy=b[1]-a[1],vx=c[0]-b[0],vy=c[1]-b[1];
+  const lu=Math.hypot(ux,uy),lv=Math.hypot(vx,vy); if(!lu||!lv) return 0;
+  return Math.acos(Math.max(-1,Math.min(1,(ux*vx+uy*vy)/(lu*lv))));
+}
+function defaultGrain(poly){
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  for(const [x,y] of poly){minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);}
+  const cx=(minX+maxX)/2, cy=(minY+maxY)/2, half=(maxY-minY)*0.35;
+  return {a:{x:cx,y:cy-half},b:{x:cx,y:cy+half}};
+}
+// Build a piece in inches (y up, origin at lower-left of its bounds)
+function buildPiece(poly,marks,ppi,meta,depthIn){
+  const ins=marks.notches.map(nc=>({...nearestOnPoly(poly,nc.x,nc.y)})).sort((a,b)=>a.seg-b.seg||a.t-b.t);
+  const verts=[]; let j=0;
+  for(let i=0;i<poly.length;i++){
+    verts.push({p:poly[i],kind:null});
+    while(j<ins.length&&ins[j].seg===i){
+      const r=ins[j]; if(r.t>1e-4&&r.t<1-1e-4) verts.push({p:[r.x,r.y],kind:'curve'}); j++;
+    }
+  }
+  const n=verts.length, TURN=30*Math.PI/180;
+  for(let i=0;i<n;i++){
+    if(verts[i].kind) continue;
+    const a=turnAngle(verts[(i-1+n)%n].p,verts[i].p,verts[(i+1)%n].p);
+    verts[i].kind=a>TURN?'turn':'curve';
+  }
+  const dpx=depthIn*ppi;
+  const notches=ins.map(r=>{const [nx,ny]=inwardNormal(poly,r.seg,r.x,r.y);return [r.x,r.y,r.x+nx*dpx,r.y+ny*dpx];});
+  const g=marks.grain||defaultGrain(poly);
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for(const v of verts){const X=v.p[0]/ppi,Y=-v.p[1]/ppi;minX=Math.min(minX,X);maxX=Math.max(maxX,X);minY=Math.min(minY,Y);maxY=Math.max(maxY,Y);}
+  const C=(x,y)=>[x/ppi-minX,-y/ppi-minY];
+  return {
+    name:meta.name,size:meta.size,qty:meta.qty,
+    verts:verts.map(v=>({xy:C(v.p[0],v.p[1]),turn:v.kind==='turn'})),
+    notches:notches.map(q=>[...C(q[0],q[1]),...C(q[2],q[3])]),
+    grain:[...C(g.a.x,g.a.y),...C(g.b.x,g.b.y)],
+    grainDefault:!marks.grain,
+    drills:marks.drills.map(d=>C(d.x,d.y)),
+    lines:(marks.lines||[]).map(l=>[...C(l.a.x,l.a.y),...C(l.b.x,l.b.y)]),
+    w:maxX-minX,h:maxY-minY
+  };
+}
+function cleanName(s,fallback){
+  const t=String(s||'').trim().toUpperCase().replace(/\s+/g,'-').replace(/[^A-Z0-9_\-]/g,'');
+  return t||fallback;
+}
+// AAMA/ASTM-style DXF (R12 ASCII)
+function makeDXF(pieces,opt){
+  const units=opt.units==='mm'?'mm':'in', f=units==='mm'?25.4:1;
+  const out=[]; const g=(c,v)=>{out.push(String(c));out.push(String(v));};
+  const n=v=>(v*f).toFixed(4);
+  g(0,'SECTION');g(2,'HEADER');g(9,'$ACADVER');g(1,'AC1009');g(9,'$INSUNITS');g(70,units==='mm'?4:1);g(0,'ENDSEC');
+  g(0,'SECTION');g(2,'TABLES');
+  g(0,'TABLE');g(2,'LTYPE');g(70,1);g(0,'LTYPE');g(2,'CONTINUOUS');g(70,0);g(3,'Solid line');g(72,65);g(73,0);g(40,'0.0');g(0,'ENDTAB');
+  const layers=[['1',7],['2',2],['3',3],['4',1],['7',5],['8',6],['13',4]];
+  g(0,'TABLE');g(2,'LAYER');g(70,layers.length);
+  for(const [nm,col] of layers){g(0,'LAYER');g(2,nm);g(70,0);g(62,col);g(6,'CONTINUOUS');}
+  g(0,'ENDTAB');g(0,'ENDSEC');
+
+  const used=new Set(), names=pieces.map((p,i)=>{
+    let b=cleanName(p.name,'PIECE-'+(i+1)), k=b, c=2; while(used.has(k)) k=b+'-'+(c++); used.add(k); return k;
+  });
+  const txt=(x,y,h,s)=>{g(0,'TEXT');g(8,'1');g(10,n(x));g(20,n(y));g(30,n(0));g(40,n(h));g(1,s);};
+  g(0,'SECTION');g(2,'BLOCKS');
+  pieces.forEach((p,i)=>{
+    const nm=names[i];
+    g(0,'BLOCK');g(8,'1');g(2,nm);g(70,0);g(10,n(0));g(20,n(0));g(30,n(0));g(3,nm);
+    g(0,'POLYLINE');g(8,'1');g(66,1);g(10,n(0));g(20,n(0));g(30,n(0));g(70,0);
+    const vs=[...p.verts,p.verts[0]];
+    for(const v of vs){g(0,'VERTEX');g(8,'1');g(10,n(v.xy[0]));g(20,n(v.xy[1]));g(30,n(0));}
+    g(0,'SEQEND');g(8,'1');
+    for(const v of p.verts){g(0,'POINT');g(8,v.turn?'2':'3');g(10,n(v.xy[0]));g(20,n(v.xy[1]));g(30,n(0));}
+    for(const q of p.notches){g(0,'LINE');g(8,'4');g(10,n(q[0]));g(20,n(q[1]));g(30,n(0));g(11,n(q[2]));g(21,n(q[3]));g(31,n(0));}
+    const q=p.grain; g(0,'LINE');g(8,'7');g(10,n(q[0]));g(20,n(q[1]));g(30,n(0));g(11,n(q[2]));g(21,n(q[3]));g(31,n(0));
+    for(const q of p.lines||[]){g(0,'LINE');g(8,'8');g(10,n(q[0]));g(20,n(q[1]));g(30,n(0));g(11,n(q[2]));g(21,n(q[3]));g(31,n(0));}
+    for(const d of p.drills){g(0,'POINT');g(8,'13');g(10,n(d[0]));g(20,n(d[1]));g(30,n(0));}
+    const tx=p.w*0.15, ty=p.h*0.5, th=0.25;
+    txt(tx,ty,th,'Piece Name: '+nm);
+    if(p.size) txt(tx,ty-th*1.6,th,'Size: '+String(p.size).trim());
+    txt(tx,ty-th*3.2,th,'Quantity: '+(p.qty||1));
+    g(0,'ENDBLK');g(8,'1');
+  });
+  g(0,'ENDSEC');
+
+  g(0,'SECTION');g(2,'ENTITIES');
+  txt(0,-1,0.25,'ANSI/AAMA VERSION: 1.0.0');
+  txt(0,-1.4,0.25,'PRODUCT: '+cleanName(opt.style,'STYLE'));
+  txt(0,-1.8,0.25,'UNITS: '+(units==='mm'?'METRIC':'ENGLISH'));
+  let ox=0;
+  pieces.forEach((p,i)=>{
+    g(0,'INSERT');g(8,'1');g(2,names[i]);g(10,n(ox));g(20,n(0));g(30,n(0));
+    ox+=p.w+2;
+  });
+  g(0,'ENDSEC');g(0,'EOF');
+  return out.join('\r\n')+'\r\n';
+}
+// Lum helper on RGBA
+function lumAt(d,w,x,y){const i=(y*w+x)*4;return 0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];}
+// Snap a point to the nearest bright grid-line intersection within R px.
+// Coarse: large box sum (a crossing holds ~2x the line pixels of a single line). Fine: mean-shift on line pixels,
+// which converges to the crossing because each arm pulls the centre onto the other line.
+function snapToIntersection(d,w,h,px,py,R,rb){
+  rb=rb||Math.max(6,Math.round(Math.max(w,h)/250));
+  const pad=R+rb*3, x0=Math.max(0,Math.round(px)-pad), y0=Math.max(0,Math.round(py)-pad);
+  const x1=Math.min(w-1,Math.round(px)+pad), y1=Math.min(h-1,Math.round(py)+pad);
+  const W=x1-x0+1, H=y1-y0+1; if(W<16||H<16) return null;
+  const L=new Float32Array(W*H);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++) L[y*W+x]=lumAt(d,w,x0+x,y0+y);
+  const srt=Float32Array.from(L).sort(), bg=srt[Math.floor(srt.length*0.4)], hi=srt[Math.floor(srt.length*0.985)];
+  if(hi-bg<12) return null;
+  for(let i=0;i<W*H;i++){const v=(L[i]-bg)/(hi-bg);L[i]=v<0.35?0:Math.min(1,v);}
+  const I=new Float64Array((W+1)*(H+1));
+  for(let y=0;y<H;y++){let row=0;for(let x=0;x<W;x++){row+=L[y*W+x];I[(y+1)*(W+1)+x+1]=I[y*(W+1)+x+1]+row;}}
+  const boxAt=(x,y,r)=>{const xa=Math.max(0,x-r),xb=Math.min(W-1,x+r),ya=Math.max(0,y-r),yb=Math.min(H-1,y+r);
+    return I[(yb+1)*(W+1)+xb+1]-I[ya*(W+1)+xb+1]-I[(yb+1)*(W+1)+xa]+I[ya*(W+1)+xa];};
+  const B=new Float32Array(W*H); let sum=0,cnt=0;
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const v=boxAt(x,y,rb);B[y*W+x]=v;sum+=v;cnt++;}
+  const mean=sum/cnt, sg=2*(R*0.7)*(R*0.7), cands=[];
+  for(let y=2;y<H-2;y++)for(let x=2;x<W-2;x++){
+    const gx=x0+x-px, gy=y0+y-py, d2=gx*gx+gy*gy; if(d2>R*R) continue;
+    const v=B[y*W+x]; if(v<1.5*mean) continue;
+    let isMax=true; for(let dy=-2;dy<=2&&isMax;dy++)for(let dx=-2;dx<=2;dx++){if((dx||dy)&&B[(y+dy)*W+x+dx]>v){isMax=false;break;}}
+    if(isMax) cands.push({x,y,sc:v*Math.exp(-d2/sg)});
+  }
+  cands.sort((a,b)=>b.sc-a.sc);
+  const rr=Math.round(rb*1.6);
+  const refine=(cx,cy)=>{
+    for(let it=0;it<40;it++){
+      let sx=0,sy=0,sw=0; const X=Math.round(cx),Y=Math.round(cy);
+      for(let y=Math.max(0,Y-rr);y<=Math.min(H-1,Y+rr);y++)for(let x=Math.max(0,X-rr);x<=Math.min(W-1,X+rr);x++){
+        const dx=x-cx,dy=y-cy; if(dx*dx+dy*dy>rr*rr) continue; const v=L[y*W+x]; sx+=v*x;sy+=v*y;sw+=v;
+      }
+      if(!sw) break; const nx=sx/sw, ny=sy/sw, mv=Math.hypot(nx-cx,ny-cy); cx=nx;cy=ny; if(mv<0.05) break;
+    }
+    return [cx,cy];
+  };
+  // Classify a spot by the lines leaving it: 4 = full crossing (two perpendicular pairs), 3 = T junction
+  // (a pair plus one perpendicular arm, e.g. where printing interrupts a line), 0 = not a crossing.
+  const angDiff=(a,b)=>{const d=Math.abs(((a-b)%360+360)%360);return Math.min(d,360-d);};
+  const lineAt=(X,Y)=>{X=Math.round(X);Y=Math.round(Y);return X>=0&&Y>=0&&X<W&&Y<H&&L[Y*W+X]>0.4;};
+  const arms=(cx,cy)=>{
+    const rad=rb*2.5, n=180, on=new Uint8Array(n);
+    for(let i=0;i<n;i++){const a=i*2*Math.PI/n; on[i]=lineAt(cx+rad*Math.cos(a),cy+rad*Math.sin(a))?1:0;}
+    let start=-1; for(let i=0;i<n;i++) if(!on[i]){start=i;break;}
+    if(start<0) return 0;
+    let runs=[]; let i=0;
+    while(i<n){const k=(start+i)%n; if(on[k]){let j=i; while(j<n&&on[(start+j)%n]) j++; if(j-i<=n/8) runs.push(((start+(i+j-1)/2)%n)*360/n); i=j;} else i++;}
+    // keep only long arms: follow each one outward and require it to stay on a line most of the way
+    const far=Math.min(rb*8,Math.max(W,H)/2);
+    runs=runs.filter(deg=>{
+      const a=deg*Math.PI/180, ux=Math.cos(a), uy=Math.sin(a); let hit=0,tot=0;
+      for(let t=rad;t<=far;t+=1){tot++; const X=cx+ux*t,Y=cy+uy*t;
+        let h=false; for(let o=-4;o<=4&&!h;o+=2) h=lineAt(X-uy*o,Y+ux*o); if(h) hit++;}
+      return tot&&hit/tot>0.55;
+    });
+    let best=0;
+    for(let p=0;p<runs.length;p++)for(let q=p+1;q<runs.length;q++){
+      if(angDiff(runs[p],runs[q])<160) continue;
+      const axis=runs[p], perp=runs.filter(r=>Math.abs(angDiff(r,axis)-90)<25);
+      const opp=perp.some(r=>perp.some(t=>angDiff(r,t)>155));
+      best=Math.max(best,opp?4:(perp.length?3:0));
+    }
+    return best;
+  };
+  let fallback=null;
+  for(const c of cands.slice(0,20)){
+    const [cx,cy]=refine(c.x,c.y), k=arms(cx,cy);
+    if(k===4) return {x:x0+cx+0.5,y:y0+cy+0.5};
+    if(k===3&&!fallback) fallback={x:x0+cx+0.5,y:y0+cy+0.5};
+  }
+  return fallback;
+}
+// Count grid squares along one direction of the corner rectangle using the grid visible near its edges.
+function countSquares(d,w,h,Hq,along){ // Hq maps unit square (u,v) -> image; along 'u' counts across, 'v' counts down
+  const P=(u,v)=>{const W_=Hq[6]*u+Hq[7]*v+Hq[8];return [(Hq[0]*u+Hq[1]*v+Hq[2])/W_,(Hq[3]*u+Hq[4]*v+Hq[5])/W_];};
+  const e0=along==='u'?[P(0,0),P(1,0)]:[P(0,0),P(0,1)], e1=along==='u'?[P(0,1),P(1,1)]:[P(1,0),P(1,1)];
+  const N=Math.round(Math.max(Math.hypot(e0[1][0]-e0[0][0],e0[1][1]-e0[0][1]),Math.hypot(e1[1][0]-e1[0][0],e1[1][1]-e1[0][1])));
+  if(N<40) return null;
+  const bands=[]; for(let v=-0.03;v<=1.031;v+=0.01) bands.push(v);
+  // For each band, high-pass the brightness along the edge so thin bright lines stand out and
+  // broad things (paper, shadows) don't; then sum across bands. Grid lines run the full length and add up.
+  const k=Math.max(3,Math.round(N/60)), x=new Float64Array(N), row=new Float64Array(N), cs=new Float64Array(N+1), ok=new Uint8Array(N);
+  for(const b of bands){
+    let valid=0;
+    for(let i=0;i<N;i++){
+      const t=i/(N-1), [X,Y]=along==='u'?P(t,b):P(b,t), xi=Math.round(X), yi=Math.round(Y);
+      if(xi<0||yi<0||xi>=w||yi>=h){ok[i]=0;row[i]=0;continue;} ok[i]=1; valid++; row[i]=lumAt(d,w,xi,yi);
+    }
+    if(valid<N*0.8) continue;
+    for(let i=0;i<N;i++) cs[i+1]=cs[i]+row[i];
+    for(let i=0;i<N;i++){
+      if(!ok[i]) continue;
+      const a=Math.max(0,i-k),c=Math.min(N-1,i+k), m=(cs[c+1]-cs[a])/(c-a+1);
+      x[i]+=Math.max(0,Math.min(60,row[i]-m));
+    }
+  }
+  let mean=0; for(let i=0;i<N;i++) mean+=x[i]; mean/=N; for(let i=0;i<N;i++) x[i]-=mean;
+  const maxLag=Math.floor(N/2), ac=new Float64Array(maxLag+2);
+  for(let l=4;l<=maxLag+1;l++){let s=0;for(let i=0;i+l<N;i++) s+=x[i]*x[i+l]; ac[l]=s/(N-l);}
+  const peaks=[]; for(let l=5;l<=maxLag;l++) if(ac[l]>0&&ac[l]>ac[l-1]&&ac[l]>=ac[l+1]) peaks.push(l);
+  if(!peaks.length) return null;
+  // Candidate grid periods (strong repeats up to a third of the edge), each refined against a far multiple.
+  const refine=j=>{const dn=ac[j-1]-2*ac[j]+ac[j+1];return j+(dn?0.5*(ac[j-1]-ac[j+1])/dn:0);};
+  const usable=peaks.filter(j=>j<=N/3); if(!usable.length) return null;
+  const gmax=Math.max(...usable.map(j=>ac[j]));
+  const cands=usable.filter(j=>ac[j]>=0.3*gmax).map(j=>{
+    let per=refine(j); const m=Math.floor((maxLag-2)/per);
+    if(m>=2){let bj=-1,bv=-Infinity;const lo=Math.max(5,Math.round(m*per-per/3)),hi=Math.min(maxLag,Math.round(m*per+per/3));
+      for(let q=lo;q<=hi;q++) if(ac[q]>bv){bv=ac[q];bj=q;} if(bj>5&&bj<maxLag&&bv>0) per=refine(bj)/m;}
+    const n=(N-1)/per; return {lag:j,n,strength:ac[j]/gmax,spacing:per};
+  });
+  // Default choice: the main grid = strongest repeat, stepping down to half while the half is just as strong.
+  const near=t=>cands.filter(c=>Math.abs(c.lag-t)<=Math.max(2,t*0.08)).sort((x,y)=>y.strength-x.strength)[0];
+  let c=cands.reduce((x,y)=>y.strength>x.strength?y:x);
+  for(;;){const hf=near(c.lag/2); if(hf&&hf.strength>=0.85*c.strength) c=hf; else break;}
+  return finishCount(c,cands);
+}
+function finishCount(c,cands){
+  const r=Math.round(c.n*2)/2;
+  return {count:r,exact:c.n,spacing:c.spacing,strength:c.strength,cands,confident:r>=0.5&&Math.abs(c.n-r)<0.15};
+}
+// Grid squares are square, so the spacing across and down must agree. If they don't, one direction locked
+// onto the wrong repeat; swap in the candidate that best matches the other direction.
+function pairCounts(a,b){
+  if(!a||!b) return [a,b];
+  const err=(x,y)=>Math.abs(Math.log(x.spacing/y.spacing));
+  if(err(a,b)<0.2) return [a,b];
+  const pick=(set,target)=>set.cands.reduce((x,y)=>Math.abs(Math.log(y.spacing/target))<Math.abs(Math.log(x.spacing/target))?y:x);
+  const b2=pick(b,a.spacing), a2=pick(a,b.spacing);
+  const opt1=[a,finishCount(b2,b.cands)], opt2=[finishCount(a2,a.cands),b];
+  const ok1=err(opt1[0],opt1[1])<0.2, ok2=err(opt2[0],opt2[1])<0.2;
+  if(ok1&&ok2) return (a.strength+b2.strength>=a2.strength+b.strength)?opt1:opt2;
+  if(ok1) return opt1; if(ok2) return opt2;
+  return [{...a,confident:false},{...b,confident:false}];
+}
+/*CORE-END*/
+
+// ================= UI =================
+const $=id=>document.getElementById(id);
+const view=$('view'), stage=$('stage'), loupe=$('loupe');
+const DPR=()=>Math.min(window.devicePixelRatio||1,3);
+const S={
+  step:'photo', src:null, corners:[], rect:null, ppi:0, score:null,
+  thr:128, invert:false, openR:3, labels:null, comps:[], sel:-1, overlay:null,
+  raw:null, outline:null, marks:{notches:[],grain:null,drills:[],lines:[],measure:null}, edited:false, selV:-1, selB:-1, autoMsg:'',
+  tool:'notch', hist:[], pieces:[], drag:null, vs:1, preview:null
+};
+const STEPS=['photo','calibrate','trace','mark','export'];
+const HINTS={
+  notch:'Pinch to zoom and use two fingers to move around. Touch near the edge, slide until the red dot is where you want the notch, then lift.',
+  grain:'Drag along the grainline. Lines within 2° of the grid snap straight.',
+  drill:'Tap where each drill hole goes.',
+  line:'Drag to draw a line inside the piece, such as dart legs or placement lines. Ends snap to the edge, other line ends, and drill holes.',
+  edge:'Tap near the edge to select the closest point; it lights up blue while your finger is down. Tap a second point and choose Straighten between to replace everything between them with a straight line (this also closes a dart). Drag near the edge to move a point, or to add one where there isn\'t a point.',
+  measure:'Drag between two points to check a measurement against your ruler.',
+  erase:'Tap a notch, drill hole, line, or grainline to remove it. To remove outline points, use Edit edge.'
+};
+
+function toast(msg){const t=$('toast');t.textContent=msg;t.style.opacity=1;clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.opacity=0,2600);}
+function work(fn){
+  $('busy').style.display='flex';
+  setTimeout(()=>{try{fn();}catch(e){console.error(e);toast(e.message||'Something went wrong.');}$('busy').style.display='none';render();},40);
+}
+function reachable(step){
+  if(step==='photo') return true;
+  if(step==='calibrate') return !!S.src;
+  if(step==='trace') return !!S.rect;
+  if(step==='mark') return !!S.outline;
+  if(step==='export') return S.pieces.length>0;
+}
+function go(step){
+  S.step=step;
+  document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.dataset.pane===step));
+  document.querySelectorAll('#nav button').forEach(b=>{
+    b.disabled=!reachable(b.dataset.step);
+    if(b.dataset.step===step) b.setAttribute('aria-current','step'); else b.removeAttribute('aria-current');
+  });
+  if(step==='export'){buildPreview();renderPieceList();}
+  if(step==='mark') updateMarkStatus();
+  render();
+}
+document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{ if(reachable(b.dataset.step)) go(b.dataset.step); });
+
+function getBase(){
+  if(S.step==='calibrate'||(S.step==='photo'&&S.src)) return S.src;
+  if(S.step==='trace'||S.step==='mark') return S.rect;
+  if(S.step==='export') return S.preview;
+  return null;
+}
+// View transform: css = base*S.k + (S.ox,S.oy). Pinch to zoom, two fingers to pan.
+function fit(){
+  const b=getBase();
+  if(!b){view.style.display='none';$('empty').style.display='block';$('fitBtn').style.display='none';return false;}
+  $('empty').style.display='none';view.style.display='block';
+  const sw=stage.clientWidth, sh=stage.clientHeight, d=DPR();
+  if(view.width!==Math.round(sw*d)||view.height!==Math.round(sh*d)){view.width=Math.round(sw*d);view.height=Math.round(sh*d);}
+  S.k0=Math.max(0.005,Math.min((sw-16)/b.w,(sh-16)/b.h));
+  if(S.viewBase!==b||S.viewW!==sw||S.viewH!==sh){S.viewBase=b;S.viewW=sw;S.viewH=sh;resetView(false);}
+  $('fitBtn').style.display=S.k>S.k0*1.05?'block':'none';
+  return true;
+}
+function resetView(draw=true){
+  const b=getBase(); if(!b) return;
+  S.k=S.k0; S.ox=(S.viewW-b.w*S.k)/2; S.oy=(S.viewH-b.h*S.k)/2;
+  if(draw) render();
+}
+function clampView(){
+  const b=getBase(); if(!b) return;
+  const W=b.w*S.k,H=b.h*S.k,m=60;
+  S.ox=W<=S.viewW?(S.viewW-W)/2:Math.min(m,Math.max(S.viewW-W-m,S.ox));
+  S.oy=H<=S.viewH?(S.viewH-H)/2:Math.min(m,Math.max(S.viewH-H-m,S.oy));
+}
+function render(){
+  if(!fit()) return;
+  const b=getBase(), ctx=view.getContext('2d'), d=DPR();
+  ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,view.width,view.height);
+  ctx.setTransform(d*S.k,0,0,d*S.k,d*S.ox,d*S.oy);
+  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+  ctx.shadowColor='rgba(0,0,0,.35)';ctx.shadowBlur=14*d;ctx.fillStyle='#000';ctx.fillRect(0,0,b.w,b.h);ctx.shadowBlur=0;
+  ctx.drawImage(b.canvas,0,0);
+  drawOverlay(ctx,1/S.k);
+}
+window.addEventListener('resize',()=>render());
+$('fitBtn').onclick=()=>resetView();
+stage.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+stage.addEventListener('touchstart',e=>{if(e.target===view)e.preventDefault();},{passive:false});
+
+// ----- overlays (ctx in base coords; u = base units per css px) -----
+function dot(ctx,x,y,r,fill,stroke,u){ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.lineWidth=2*u;ctx.strokeStyle=stroke;ctx.stroke();}}
+function line(ctx,a,b,w,color){ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.lineWidth=w;ctx.strokeStyle=color;ctx.stroke();}
+function label(ctx,text,x,y,u){
+  ctx.font=`600 ${13*u}px "Avenir Next",system-ui,sans-serif`;
+  const w=ctx.measureText(text).width+10*u;
+  ctx.fillStyle='rgba(35,38,42,.85)';ctx.fillRect(x-w/2,y-11*u,w,22*u);
+  ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,x,y+0.5*u);
+}
+function drawOverlay(ctx,u){
+  ctx.lineCap='round';ctx.lineJoin='round';
+  if(S.step==='calibrate'){
+    const c=S.corners;
+    if(c.length===4){
+      const o=orderCorners(c);
+      ctx.beginPath();o.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();
+      ctx.lineWidth=2*u;ctx.strokeStyle='#fff';ctx.setLineDash([6*u,5*u]);ctx.stroke();ctx.setLineDash([]);
+      const R=rectDims();
+      label(ctx,R.w?`${R.cw} sq = ${fmtIn(R.w)}`:'squares across?',(o[0].x+o[1].x)/2,(o[0].y+o[1].y)/2,u);
+      label(ctx,R.h?`${R.ch} sq = ${fmtIn(R.h)}`:'squares down?',(o[0].x+o[3].x)/2,(o[0].y+o[3].y)/2,u);
+    }
+    c.forEach((p,i)=>{
+      const act=S.drag&&S.drag.type==='corner'&&S.drag.i===i;
+      dot(ctx,p.x,p.y,(act?18:14)*u,act?'rgba(47,111,208,.35)':'rgba(210,55,44,.3)','#fff',u);
+      line(ctx,[p.x-20*u,p.y],[p.x+20*u,p.y],1.5*u,'#fff'); line(ctx,[p.x,p.y-20*u],[p.x,p.y+20*u],1.5*u,'#fff');
+    });
+  }
+  if(S.step==='trace'&&S.overlay) ctx.drawImage(S.overlay,0,0);
+  if(S.step==='mark'&&S.outline){
+    const P=S.outline;
+    ctx.beginPath();P.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.closePath();
+    ctx.lineWidth=5*u;ctx.strokeStyle='rgba(255,255,255,.85)';ctx.stroke();
+    ctx.lineWidth=2*u;ctx.strokeStyle='#23262A';ctx.stroke();
+    const dpx=(+$('nDepth').value||0.25)*S.ppi;
+    for(const nc of S.marks.notches){
+      const r=nearestOnPoly(P,nc.x,nc.y), [nx,ny]=inwardNormal(P,r.seg,r.x,r.y);
+      line(ctx,[r.x,r.y],[r.x+nx*dpx,r.y+ny*dpx],3*u,'#D2372C'); dot(ctx,r.x,r.y,4*u,'#D2372C','#fff',u);
+    }
+    const g=S.marks.grain||(S.drag&&S.drag.type==='grain'?null:defaultGrain(P));
+    const drawGrain=(g,alpha)=>{
+      const a=[g.a.x,g.a.y],b=[g.b.x,g.b.y],col=`rgba(47,111,208,${alpha})`;
+      line(ctx,a,b,2.5*u,col);
+      const ang=Math.atan2(b[1]-a[1],b[0]-a[0]),h=12*u;
+      for(const [p,s] of [[b,1],[a,-1]]){
+        line(ctx,p,[p[0]-s*h*Math.cos(ang-0.4),p[1]-s*h*Math.sin(ang-0.4)],2.5*u,col);
+        line(ctx,p,[p[0]-s*h*Math.cos(ang+0.4),p[1]-s*h*Math.sin(ang+0.4)],2.5*u,col);
+      }
+    };
+    if(g) drawGrain(g,S.marks.grain?1:0.35);
+    if(S.drag&&S.drag.type==='grain') drawGrain({a:S.drag.a,b:S.drag.b},1);
+    const LC='#6B4FA0';
+    for(const l of S.marks.lines){line(ctx,[l.a.x,l.a.y],[l.b.x,l.b.y],2.5*u,LC);dot(ctx,l.a.x,l.a.y,3*u,LC);dot(ctx,l.b.x,l.b.y,3*u,LC);}
+    if(S.drag&&S.drag.type==='line'){const d=S.drag;line(ctx,[d.a.x,d.a.y],[d.b.x,d.b.y],2.5*u,LC);dot(ctx,d.a.x,d.a.y,4*u,d.a.s?'#fff':LC,LC,u);dot(ctx,d.b.x,d.b.y,4*u,d.b.s?'#fff':LC,LC,u);}
+    if(S.tool==='edge'){
+      const n=P.length; let per=0; for(let i=0;i<n;i++){const a=P[i],b=P[(i+1)%n];per+=Math.hypot(b[0]-a[0],b[1]-a[1]);}
+      const spacing=per/n/u; // average css px between points
+      if(S.selV>=0&&S.selB>=0){
+        const idx=[S.selV,...shortPath(S.selV,S.selB,n),S.selB];
+        ctx.beginPath();idx.forEach((k,j)=>j?ctx.lineTo(P[k][0],P[k][1]):ctx.moveTo(P[k][0],P[k][1]));
+        ctx.lineWidth=6*u;ctx.strokeStyle='rgba(47,111,208,.55)';ctx.stroke();
+        line(ctx,P[S.selV],P[S.selB],2*u,'#2F6FD0');
+      }
+      if(spacing>=7) P.forEach(q=>dot(ctx,q[0],q[1],2.5*u,'#fff','#23262A',u*0.7));
+      const sel=[S.selV,S.selB]; if(S.drag&&S.drag.type==='vertex') sel.push(S.drag.i);
+      for(const si of sel) if(si>=0&&si<n){const q=P[si];dot(ctx,q[0],q[1],6*u,'#2F6FD0','#fff',u);}
+    }
+    for(const d of S.marks.drills){
+      ctx.beginPath();ctx.arc(d.x,d.y,6*u,0,Math.PI*2);ctx.lineWidth=2*u;ctx.strokeStyle='#2F6FD0';ctx.stroke();
+      line(ctx,[d.x-9*u,d.y],[d.x+9*u,d.y],1.5*u,'#2F6FD0');line(ctx,[d.x,d.y-9*u],[d.x,d.y+9*u],1.5*u,'#2F6FD0');
+    }
+    const m=(S.drag&&S.drag.type==='measure')?S.drag:S.marks.measure;
+    if(m){
+      ctx.setLineDash([6*u,4*u]);line(ctx,[m.a.x,m.a.y],[m.b.x,m.b.y],2*u,'#E0A21A');ctx.setLineDash([]);
+      dot(ctx,m.a.x,m.a.y,3.5*u,'#E0A21A');dot(ctx,m.b.x,m.b.y,3.5*u,'#E0A21A');
+      const inch=dist(m.a,m.b)/S.ppi;
+      label(ctx,`${inch.toFixed(2)} in  ${(inch*25.4).toFixed(1)} mm`,(m.a.x+m.b.x)/2,(m.a.y+m.b.y)/2-16*u,u);
+    }
+    if(S.drag&&S.drag.type==='notch'){
+      const r=nearestOnPoly(P,S.drag.p.x,S.drag.p.y);
+      if(r.d<=SNAP*u) dot(ctx,r.x,r.y,5*u,'rgba(210,55,44,.6)','#fff',u);
+    }
+  }
+}
+
+// ----- pointer + loupe -----
+function toBase(e){const r=view.getBoundingClientRect();return {x:(e.clientX-r.left-S.ox)/S.k,y:(e.clientY-r.top-S.oy)/S.k};}
+function focusPoint(){
+  const d=S.drag; if(!d) return null;
+  if(d.type==='corner') return S.corners[d.i];
+  if(d.type==='vertex') return {x:S.outline[d.i][0],y:S.outline[d.i][1]};
+  if(d.type==='line') return d.b;
+  if(d.type==='notch'){const r=nearestOnPoly(S.outline,d.p.x,d.p.y);return r.d<=SNAP/S.k?{x:r.x,y:r.y}:d.p;}
+  if(d.type==='grain'||d.type==='measure') return d.b;
+  return d.p;
+}
+function showLoupe(e){
+  const f=focusPoint(), b=getBase(); if(!f||!b) return;
+  const L=140, d=DPR(), sr=stage.getBoundingClientRect();
+  let left=e.clientX-sr.left-L/2, top=e.clientY-sr.top-L-48;
+  if(top<4) top=e.clientY-sr.top+48;
+  left=Math.max(4,Math.min(sr.width-L-4,left));
+  loupe.style.left=left+'px';loupe.style.top=top+'px';loupe.style.display='block';
+  if(loupe.width!==L*d){loupe.width=L*d;loupe.height=L*d;}
+  const z=Math.max(S.k*3,S.step==='calibrate'?1.1:1.8), r=L/(2*z);
+  const ctx=loupe.getContext('2d');
+  ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#244A3F';ctx.fillRect(0,0,loupe.width,loupe.height);
+  ctx.setTransform(d*z,0,0,d*z,d*(L/2-f.x*z),d*(L/2-f.y*z));
+  const x0=Math.max(0,Math.floor(f.x-r)),y0=Math.max(0,Math.floor(f.y-r)),x1=Math.min(b.w,Math.ceil(f.x+r)),y1=Math.min(b.h,Math.ceil(f.y+r));
+  if(x1>x0&&y1>y0) ctx.drawImage(b.canvas,x0,y0,x1-x0,y1-y0,x0,y0,x1-x0,y1-y0);
+  drawOverlay(ctx,1/z);
+  ctx.setTransform(d,0,0,d,0,0);
+  ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(L/2-14,L/2);ctx.lineTo(L/2-4,L/2);ctx.moveTo(L/2+4,L/2);ctx.lineTo(L/2+14,L/2);
+  ctx.moveTo(L/2,L/2-14);ctx.lineTo(L/2,L/2-4);ctx.moveTo(L/2,L/2+4);ctx.lineTo(L/2,L/2+14);ctx.stroke();
+}
+function hideLoupe(){loupe.style.display='none';}
+function snapState(){return JSON.stringify({n:S.marks.notches,g:S.marks.grain,d:S.marks.drills,l:S.marks.lines,o:S.outline,e:S.edited});}
+function pushHist(st){S.hist.push(st);if(S.hist.length>60)S.hist.shift();}
+function snapshot(){pushHist(snapState());}
+function snapLinePt(p,u){
+  const R=SNAP*u; let best=null,bd=R;
+  const pts=[]; for(const l of S.marks.lines){pts.push(l.a,l.b);} for(const d of S.marks.drills) pts.push(d);
+  for(const c of pts){const dd=dist(c,p); if(dd<bd){bd=dd;best={x:c.x,y:c.y,s:true};}}
+  if(best) return best;
+  const r=nearestOnPoly(S.outline,p.x,p.y);
+  if(r.d<=R*0.7) return {x:r.x,y:r.y,s:true};
+  return {x:p.x,y:p.y,s:false};
+}
+
+const SNAP=28; // css px
+const touches=new Map(); let pinch=null, ignoreTouch=false;
+function cancelDrag(){
+  const d=S.drag; if(!d) return;
+  if(d.type==='corner'&&d.added) S.corners.splice(d.i,1);
+  if(d.type==='vertex'){const o=JSON.parse(d.st);S.outline=o.o;}
+  S.drag=null; hideLoupe();
+}
+function startPinch(){
+  const [a,b]=[...touches.values()];
+  const r=view.getBoundingClientRect(), mx=(a.x+b.x)/2-r.left, my=(a.y+b.y)/2-r.top;
+  pinch={d0:Math.hypot(a.x-b.x,a.y-b.y)||1,k0:S.k,bx:(mx-S.ox)/S.k,by:(my-S.oy)/S.k};
+}
+view.addEventListener('pointerdown',e=>{
+  if(!getBase()) return; e.preventDefault(); view.setPointerCapture(e.pointerId);
+  touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(touches.size>=2){ cancelDrag(); if(touches.size===2) startPinch(); render(); return; }
+  if(ignoreTouch) return;
+  const p=toBase(e), u=1/S.k;
+  if(S.step==='calibrate'){
+    let bi=-1,bd=Infinity,added=false; S.corners.forEach((c,i)=>{const dd=dist(c,p);if(dd<bd){bd=dd;bi=i;}});
+    if(S.corners.length<4&&bd>44*u){S.corners.push({...p});bi=S.corners.length-1;added=true;}
+    const c=S.corners[bi];
+    S.drag={type:'corner',i:bi,added,off:{x:c.x-p.x,y:c.y-p.y}};
+  } else if(S.step==='trace'){
+    S.drag={type:'pick',p};
+  } else if(S.step==='mark'){
+    const t=S.tool;
+    if(t==='grain'||t==='measure') S.drag={type:t,a:{...p},b:{...p}};
+    else if(t==='line'){const a=snapLinePt(p,u);S.drag={type:'line',a,b:{...a}};}
+    else if(t==='edge'){
+      // Generous targets: any touch near the edge picks the closest point.
+      const P=S.outline, r=nearestOnPoly(P,p.x,p.y);
+      if(r.d<=44*u){
+        let vi=0,vd=Infinity; P.forEach((q,i)=>{const dd=Math.hypot(q[0]-p.x,q[1]-p.y);if(dd<vd){vd=dd;vi=i;}});
+        S.drag={type:'vertex',i:vi,st:snapState(),p0:{...p},moved:false,added:false,nearV:vd<=18*u,proj:r};
+      } else {S.selV=-1;S.selB=-1;S.drag=null;updateMarkStatus();}
+    }
+    else S.drag={type:t,p};
+  }
+  if(S.drag&&S.step!=='trace'&&S.drag.type!=='erase') showLoupe(e);
+  render();
+});
+view.addEventListener('pointermove',e=>{
+  if(!touches.has(e.pointerId)) return; e.preventDefault();
+  touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pinch&&touches.size>=2){
+    const [a,b]=[...touches.values()];
+    const r=view.getBoundingClientRect(), mx=(a.x+b.x)/2-r.left, my=(a.y+b.y)/2-r.top;
+    S.k=Math.max(S.k0,Math.min(S.k0*25,pinch.k0*Math.hypot(a.x-b.x,a.y-b.y)/pinch.d0));
+    S.ox=mx-pinch.bx*S.k; S.oy=my-pinch.by*S.k; clampView(); render(); return;
+  }
+  if(!S.drag) return;
+  const p=toBase(e), d=S.drag;
+  if(d.type==='corner'){const q={x:p.x+d.off.x,y:p.y+d.off.y};S.corners[d.i]={x:Math.max(0,Math.min(S.src.w,q.x)),y:Math.max(0,Math.min(S.src.h,q.y))};}
+  else if(d.type==='grain'||d.type==='measure') d.b={...p};
+  else if(d.type==='line') d.b=snapLinePt(p,1/S.k);
+  else if(d.type==='vertex'){
+    if(!d.moved&&dist(p,d.p0)>4/S.k){
+      d.moved=true;
+      if(!d.nearV){S.outline.splice(d.proj.seg+1,0,[d.proj.x,d.proj.y]);d.i=d.proj.seg+1;d.added=true;}
+    }
+    if(d.moved) S.outline[d.i]=[p.x,p.y];
+  }
+  else d.p=p;
+  if(d.type!=='pick'&&d.type!=='erase') showLoupe(e);
+  render();
+});
+function pointerEnd(e,cancelled){
+  touches.delete(e.pointerId);
+  if(pinch){ if(touches.size<2){pinch=null;ignoreTouch=touches.size>0;} return; }
+  if(touches.size===0) ignoreTouch=false;
+  if(cancelled){cancelDrag();render();return;}
+  endDrag(e);
+}
+function endDrag(e){
+  const d=S.drag; if(!d) return; S.drag=null; hideLoupe();
+  const u=1/S.k;
+  if(d.type==='corner'){ snapCorner(d.i); autoCount(); updateCalStatus(); }
+  if(d.type==='pick'){
+    const x=Math.floor(d.p.x),y=Math.floor(d.p.y);
+    const id=(x>=0&&y>=0&&x<S.rect.w&&y<S.rect.h)?S.labels[y*S.rect.w+x]:0;
+    if(id&&S.comps.some(c=>c.id===id)){S.sel=id;buildOverlay();updateTraceStatus();}
+    else toast('That spot isn\'t paper. Tap inside the piece.');
+  }
+  if(d.type==='notch'){
+    const r=nearestOnPoly(S.outline,d.p.x,d.p.y);
+    if(r.d<=SNAP*u){snapshot();S.marks.notches.push({x:r.x,y:r.y});}
+    else toast('Tap closer to the edge to place a notch.');
+  }
+  if(d.type==='drill'){
+    if(pointInPoly(S.outline,d.p.x,d.p.y)){snapshot();S.marks.drills.push({...d.p});}
+    else toast('Drill holes go inside the piece.');
+  }
+  if(d.type==='grain'){
+    if(dist(d.a,d.b)<25*u){toast('Drag farther to draw the grainline.');}
+    else{
+      const ang=Math.atan2(d.b.y-d.a.y,d.b.x-d.a.x), snap=Math.round(ang/(Math.PI/2))*(Math.PI/2);
+      let b=d.b;
+      if(Math.abs(ang-snap)<2*Math.PI/180){const L=dist(d.a,d.b);b={x:d.a.x+L*Math.cos(snap),y:d.a.y+L*Math.sin(snap)};}
+      snapshot();S.marks.grain={a:d.a,b};
+    }
+  }
+  if(d.type==='measure'){ if(dist(d.a,d.b)>=5*u) S.marks.measure={a:d.a,b:d.b}; }
+  if(d.type==='erase') eraseAt(d.p,u);
+  if(d.type==='line'){
+    if(dist(d.a,d.b)<15*u) toast('Drag farther to draw a line.');
+    else{
+      let b=d.b;
+      if(!b.s){const ang=Math.atan2(b.y-d.a.y,b.x-d.a.x),sn=Math.round(ang/(Math.PI/2))*(Math.PI/2);
+        if(Math.abs(ang-sn)<2*Math.PI/180){const L=dist(d.a,b);b={x:d.a.x+L*Math.cos(sn),y:d.a.y+L*Math.sin(sn)};}}
+      snapshot();S.marks.lines.push({a:{x:d.a.x,y:d.a.y},b:{x:b.x,y:b.y}});
+    }
+  }
+  if(d.type==='vertex'){
+    if(d.moved||d.added){pushHist(d.st);S.edited=true;S.selV=d.i;S.selB=-1;}
+    else if(S.selV<0) S.selV=d.i;
+    else if(d.i===S.selV||d.i===S.selB){S.selV=-1;S.selB=-1;}
+    else if(S.selB<0) S.selB=d.i;
+    else {S.selV=d.i;S.selB=-1;}
+  }
+  if(S.step==='mark') updateMarkStatus();
+  render();
+}
+view.addEventListener('pointerup',e=>pointerEnd(e,false));
+view.addEventListener('pointercancel',e=>pointerEnd(e,true));
+
+function segDist(p,a,b){const dx=b.x-a.x,dy=b.y-a.y,L2=dx*dx+dy*dy;let t=L2?((p.x-a.x)*dx+(p.y-a.y)*dy)/L2:0;t=Math.max(0,Math.min(1,t));return Math.hypot(p.x-a.x-t*dx,p.y-a.y-t*dy);}
+function eraseAt(p,u){
+  const lim=30*u; let best=null,bd=lim;
+  S.marks.notches.forEach((n,i)=>{const dd=dist(n,p);if(dd<bd){bd=dd;best=['n',i];}});
+  S.marks.drills.forEach((n,i)=>{const dd=dist(n,p);if(dd<bd){bd=dd;best=['d',i];}});
+  if(S.marks.grain){const dd=segDist(p,S.marks.grain.a,S.marks.grain.b);if(dd<bd){bd=dd;best=['g'];}}
+  S.marks.lines.forEach((l,i)=>{const dd=segDist(p,l.a,l.b);if(dd<bd){bd=dd;best=['l',i];}});
+  if(!best){toast('Nothing to erase there.');return;}
+  snapshot();
+  if(best[0]==='n') S.marks.notches.splice(best[1],1);
+  else if(best[0]==='d') S.marks.drills.splice(best[1],1);
+  else if(best[0]==='l') S.marks.lines.splice(best[1],1);
+  else S.marks.grain=null;
+}
+
+// ----- step 1: photo -----
+// Decode without blob: URLs (often blocked in embedded viewers); handles HEIC where the browser can.
+async function decodeImage(blob){
+  if(window.createImageBitmap){
+    try{return await createImageBitmap(blob,{imageOrientation:'from-image'});}catch(e){}
+    try{return await createImageBitmap(blob);}catch(e){}
+  }
+  const dataUrl=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(r.error);r.readAsDataURL(blob);});
+  return await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('decode'));i.src=dataUrl;});
+}
+async function loadImageBlob(blob){
+  $('busy').style.display='flex';
+  let img;
+  try{ img=await decodeImage(blob); }
+  catch(e){
+    $('busy').style.display='none';
+    toast('This photo format couldn\'t be read here. Try Paste photo, or set Camera > Formats to Most Compatible.');
+    return;
+  }
+  useImage(img);
+}
+function useImage(img){
+  work(()=>{
+    let w=img.naturalWidth||img.width,h=img.naturalHeight||img.height; const maxA=12e6;
+    if(!w||!h) throw new Error('That image is empty.');
+    if(w*h>maxA){const k=Math.sqrt(maxA/(w*h));w=Math.round(w*k);h=Math.round(h*k);}
+    const c=document.createElement('canvas');c.width=w;c.height=h;
+    const cx=c.getContext('2d');cx.drawImage(img,0,0,w,h);
+    if(img.close) img.close();
+    let data;
+    try{ data=cx.getImageData(0,0,w,h); }
+    catch(e){ throw new Error('The pasted photo is locked by the browser. Use Choose photo instead.'); }
+    S.src={canvas:c,w,h,data};
+    S.corners=[];S.rect=null;S.outline=null;S.labels=null;
+    autoBox();
+    resetPasteZone(); $('pasteZone').style.display='none';
+    updateCalStatus();go('calibrate');
+    if(Math.max(w,h)<2000) toast('This image is low resolution, so measurements will be less precise.');
+  });
+}
+function resetPasteZone(){ $('pasteZone').textContent='Touch and hold here, then choose Paste.'; }
+$('camFile').addEventListener('change',e=>{
+  const f=e.target.files[0]; e.target.value='';
+  if(f) loadImageBlob(f);
+});
+$('file').addEventListener('change',e=>{
+  const f=e.target.files[0]; e.target.value='';
+  if(f) loadImageBlob(f);
+});
+function imageFromClipboardData(cd){
+  if(!cd) return null;
+  for(const it of cd.items||[]) if(it.kind==='file'&&it.type.startsWith('image/')) return it.getAsFile();
+  for(const f of cd.files||[]) if(f.type.startsWith('image/')) return f;
+  return null;
+}
+document.addEventListener('paste',e=>{
+  const f=imageFromClipboardData(e.clipboardData);
+  if(f){ e.preventDefault(); loadImageBlob(f); return; }
+  // No file exposed (common on iPhone): let the paste zone insert the image, then read it back.
+  if(e.target&&e.target.id==='pasteZone'){ $('pasteZone').textContent=''; }
+});
+$('pasteZone').addEventListener('input',()=>setTimeout(readPastedImage,60));
+async function readPastedImage(){
+  const z=$('pasteZone'), el=z.querySelector('img');
+  if(!el){ resetPasteZone(); toast('The clipboard doesn\'t have a photo. In Photos, tap Share, then Copy Photo.'); return; }
+  try{
+    if(!el.complete||!el.naturalWidth) await new Promise((res,rej)=>{el.onload=res;el.onerror=rej;setTimeout(rej,8000);});
+    if(el.src.startsWith('data:')||el.src.startsWith('blob:')){
+      try{ const b=await (await fetch(el.src)).blob(); loadImageBlob(b); return; }catch(e){}
+    }
+    useImage(el);
+  }catch(e){ resetPasteZone(); toast('That paste couldn\'t be read. Use Choose photo instead.'); }
+}
+$('pasteBtn').onclick=async()=>{
+  if(navigator.clipboard&&navigator.clipboard.read){
+    try{
+      const items=await navigator.clipboard.read();
+      for(const it of items){
+        const t=it.types.find(t=>t.startsWith('image/'));
+        if(t){ loadImageBlob(await it.getType(t)); return; }
+      }
+      toast('The clipboard doesn\'t have a photo. Copy one in Photos first.');
+      return;
+    }catch(e){ /* blocked here; fall back to the paste zone */ }
+  }
+  const z=$('pasteZone'); z.style.display='block'; z.focus();
+  toast('Touch and hold the dashed box, then choose Paste.');
+};
+
+// ----- step 2: corners -----
+function snapCorner(i){
+  const c=S.corners[i]; if(!c||!$('gridSnap').checked) return;
+  const R=Math.round(Math.max(6,Math.min(80,20/S.k)));
+  const r=snapToIntersection(S.src.data.data,S.src.w,S.src.h,c.x,c.y,R);
+  if(r) S.corners[i]=r;
+}
+function autoCount(){
+  S.autoMsg='';
+  if(S.corners.length<4) return;
+  try{
+    const o=orderCorners(S.corners);
+    const Hq=homography([[0,0],[1,0],[1,1],[0,1]],o.map(p=>[p.x,p.y]));
+    const [a,b]=pairCounts(countSquares(S.src.data.data,S.src.w,S.src.h,Hq,'u'),countSquares(S.src.data.data,S.src.w,S.src.h,Hq,'v'));
+    if(a&&b&&a.confident&&b.confident){$('rectW').value=a.count;$('rectH').value=b.count;S.autoMsg='auto';}
+    else S.autoMsg='fail';
+  }catch(e){S.autoMsg='fail';}
+}
+function updateCalStatus(){
+  const n=S.corners.length, R=rectDims();
+  $('calStatus').textContent=n<4?`${n} of 4 points. Points snap to the nearest grid intersection.`
+    :S.autoMsg==='fail'?'Couldn\'t count the squares automatically. Count them and enter the numbers above.'
+    :`${S.autoMsg==='auto'?'Counted':'Using'} ${R.cw||'?'} × ${R.ch||'?'} squares = ${R.w?fmtIn(R.w):'?'} × ${R.h?fmtIn(R.h):'?'}. Compare with the ruler on your mat before straightening.`;
+  $('straighten').disabled=n<4;
+}
+$('clearPts').onclick=()=>work(()=>{autoBox();updateCalStatus();});
+// Place a box around the paper automatically, snapped to grid crossings.
+function autoBox(){
+  const {w,h,data}=S.src, d=data.data, k=Math.min(1,700/Math.max(w,h)), sw=Math.max(1,Math.round(w*k)), sh=Math.max(1,Math.round(h*k));
+  const px=new Uint8ClampedArray(sw*sh*4);
+  for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){const si=(Math.min(h-1,Math.floor(y/k))*w+Math.min(w-1,Math.floor(x/k)))*4,o=(y*sw+x)*4;px[o]=d[si];px[o+1]=d[si+1];px[o+2]=d[si+2];px[o+3]=255;}
+  const sc=computeScore(px,sw*sh); let m=binarize(sc,otsu(sc),false); m=openMask(m,sw,sh,2);
+  const {comps}=labelComponents(m,sw,sh,Math.round(sw*sh*0.01));
+  let bx0=sw*0.2,by0=sh*0.2,bx1=sw*0.8,by1=sh*0.8;
+  const inner=comps.filter(c=>!c.touches), pool=inner.length?inner:comps;
+  if(pool.length){const c=pool.reduce((a,b)=>a.area>b.area?a:b);bx0=c.minX;by0=c.minY;bx1=c.maxX;by1=c.maxY;}
+  // Estimate the grid spacing so the box sits about one square outside the paper
+  let g=0;
+  try{const Hi=homography([[0,0],[1,0],[1,1],[0,1]],[[0,0],[w-1,0],[w-1,h-1],[0,h-1]]);const cu=countSquares(d,w,h,Hi,'u');if(cu&&cu.count>=4)g=(w-1)/cu.count;}catch(e){}
+  const R=g?Math.round(g*0.7):Math.round(Math.max(w,h)/35), pad=g?g*0.8*k:Math.max(sw,sh)*0.035, mx=pad, my=pad;
+  const cl=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+  const pts=[[bx0-mx,by0-my],[bx1+mx,by0-my],[bx1+mx,by1+my],[bx0-mx,by1+my]].map(([x,y])=>({x:cl(x,sw*0.02,sw*0.98)/k,y:cl(y,sh*0.02,sh*0.98)/k}));
+  S.corners=pts.map(p=>snapToIntersection(d,w,h,p.x,p.y,R)||p);
+  autoCount();
+}
+function rectDims(){const sz=+$('sqSize').value, cw=+$('rectW').value, ch=+$('rectH').value;return {cw,ch,w:cw>0?cw*sz:0,h:ch>0?ch*sz:0};}
+function fmtIn(v){return (Math.round(v*100)/100)+' in';}
+// Remember the square size: Claude's artifact storage inside Claude, the browser's own storage when hosted elsewhere.
+(async()=>{try{
+  let v=null;
+  if(window.storage){const r=await window.storage.get('sqSize',false);v=r&&r.value;}
+  else v=window['local'+'Storage'].getItem('sqSize');
+  if(v)$('sqSize').value=v;
+}catch(e){}})();
+$('sqSize').addEventListener('change',()=>{try{
+  if(window.storage) window.storage.set('sqSize',$('sqSize').value,false);
+  else window['local'+'Storage'].setItem('sqSize',$('sqSize').value);
+}catch(e){}});
+$('rectW').oninput=$('rectH').oninput=$('sqSize').onchange=()=>{if(S.autoMsg==='auto')S.autoMsg='manual';updateCalStatus();render();};
+$('straighten').onclick=()=>work(()=>{
+  const R=rectDims(), rw=R.w, rh=R.h;
+  if(!(rw>0&&rh>0)) throw new Error('Enter how many grid squares the rectangle spans across and down.');
+  const o=orderCorners(S.corners);
+  // Safety net: the box's shape in the photo must roughly match the entered size (grid squares are square).
+  const pw=(dist(o[0],o[1])+dist(o[3],o[2]))/2, ph=(dist(o[0],o[3])+dist(o[1],o[2]))/2;
+  if(Math.abs(Math.log((rw/rh)/(pw/ph)))>0.25){
+    const guess=Math.round(R.cw*ph/pw*2)/2;
+    throw new Error(`Those numbers don't fit the box's shape. With ${R.cw} squares across, the side looks closer to ${guess} squares down. Check the counts against the mat.`);
+  }
+  const srcPPI=Math.max(dist(o[0],o[1])/rw,dist(o[0],o[3])/rh);
+  let ppi=Math.min(100,3000/Math.max(rw,rh),srcPPI*1.25); ppi=Math.max(10,ppi);
+  const W=Math.round(rw*ppi),H=Math.round(rh*ppi);
+  const Hm=homography([[0,0],[rw*ppi,0],[rw*ppi,rh*ppi],[0,rh*ppi]],o.map(p=>[p.x,p.y]));
+  const px=rectifyPixels(S.src.data.data,S.src.w,S.src.h,Hm,W,H);
+  const c=document.createElement('canvas');c.width=W;c.height=H;
+  c.getContext('2d').putImageData(new ImageData(px,W,H),0,0);
+  S.rect={canvas:c,w:W,h:H}; S.ppi=ppi; S.srcPPI=srcPPI;
+  S.score=computeScore(px,W*H);
+  S.thr=otsu(S.score); $('thr').value=S.thr;
+  S.openR=Math.max(1,Math.round(0.05*ppi)); $('openR').value=S.openR;
+  S.sel=-1; segment(); go('trace');
+});
+
+// ----- step 3: trace -----
+function segment(){
+  const {w,h}=S.rect;
+  let m=binarize(S.score,S.thr,S.invert);
+  m=closeMask(m,w,h,Math.max(1,Math.round(0.02*S.ppi))); // seal printed lines that run off the paper edge
+  m=openMask(m,w,h,S.openR);
+  m=fillHoles(m,w,h);
+  const r=labelComponents(m,w,h,Math.round(0.5*S.ppi*S.ppi));
+  S.labels=r.labels; S.comps=r.comps;
+  if(!S.comps.some(c=>c.id===S.sel)){
+    const inner=S.comps.filter(c=>!c.touches), pool=inner.length?inner:S.comps;
+    S.sel=pool.length?pool.reduce((a,b)=>a.area>b.area?a:b).id:-1;
+  }
+  buildOverlay(); updateTraceStatus();
+}
+function buildOverlay(){
+  const {w,h}=S.rect, c=S.overlay&&S.overlay.width===w&&S.overlay.height===h?S.overlay:document.createElement('canvas');
+  c.width=w;c.height=h; const ctx=c.getContext('2d'), im=ctx.createImageData(w,h), d=im.data, L=S.labels;
+  const ok=new Set(S.comps.map(c=>c.id));
+  for(let i=0;i<w*h;i++){
+    const id=L[i]; if(!id||!ok.has(id)) continue;
+    if(id===S.sel){d[i*4]=47;d[i*4+1]=111;d[i*4+2]=208;d[i*4+3]=120;}
+    else{d[i*4]=255;d[i*4+1]=255;d[i*4+2]=255;d[i*4+3]=60;}
+  }
+  ctx.putImageData(im,0,0); S.overlay=c;
+}
+function updateTraceStatus(){
+  $('thrV').textContent=S.thr; $('openV').textContent=S.openR?`${(S.openR*2+1)/S.ppi*25.4<10?((S.openR*2+1)/S.ppi*25.4).toFixed(1):Math.round((S.openR*2+1)/S.ppi*25.4)} mm`:'off';
+  const el=$('traceStatus'); el.classList.remove('warn');
+  const c=S.comps.find(c=>c.id===S.sel);
+  const res=`Scale ${(25.4/S.ppi).toFixed(2)} mm per pixel.`;
+  if(!c){el.textContent='No paper found. Adjust paper detection, or check the invert option.';el.classList.add('warn');$('traceBtn').disabled=true;return;}
+  $('traceBtn').disabled=false;
+  const wi=(c.maxX-c.minX+1)/S.ppi, hi=(c.maxY-c.minY+1)/S.ppi;
+  if(c.touches){el.textContent=`Selected piece touches the rectangle's edge, so part of it will be cut off. Go back and pick corners farther out. ${res}`;el.classList.add('warn');}
+  else el.textContent=`Selected piece is about ${wi.toFixed(1)} × ${hi.toFixed(1)} in. ${S.comps.length} shape${S.comps.length===1?'':'s'} found. ${res}`;
+  if(S.srcPPI<25){el.textContent+=' The photo has low detail for this area; move closer for better accuracy.';el.classList.add('warn');}
+}
+let segT=0;
+function reseg(){clearTimeout(segT);segT=setTimeout(()=>work(segment),220);}
+$('thr').oninput=e=>{S.thr=+e.target.value;$('thrV').textContent=S.thr;reseg();};
+$('openR').oninput=e=>{S.openR=+e.target.value;reseg();};
+$('invert').onchange=e=>{S.invert=e.target.checked;S.thr=otsu(S.score);$('thr').value=S.thr;reseg();};
+function tolPx(){return (+$('smooth').value)/25.4*S.ppi;}
+$('traceBtn').onclick=()=>work(()=>{
+  const c=S.comps.find(c=>c.id===S.sel); if(!c) return;
+  const pts=traceComponent(S.labels,S.rect.w,S.rect.h,c.id,c.sx,c.sy);
+  S.raw=smoothClosed(pts,2,2);
+  S.outline=simplifyClosed(S.raw,tolPx());
+  S.marks={notches:[],grain:null,drills:[],lines:[],measure:null}; S.hist=[]; S.edited=false; S.selV=-1; S.selB=-1;
+  $('pName').value='';$('pSize').value=$('pSize').value||'';$('pQty').value=1;
+  go('mark');
+});
+
+// ----- step 4: mark -----
+document.querySelectorAll('#tools button').forEach(b=>b.onclick=()=>{
+  S.tool=b.dataset.tool; S.selV=-1; S.selB=-1;
+  document.querySelectorAll('#tools button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  updateMarkStatus(); render();
+});
+function updateMarkStatus(){
+  if(!S.outline) return;
+  $('smooth').disabled=S.edited;
+  $('smV').textContent=S.edited?'locked after edge edits':(+$('smooth').value).toFixed(2)+' mm';
+  const ed=S.tool==='edge';
+  $('delPt').style.display=ed?'inline-block':'none';
+  $('straightBetween').style.display=ed?'inline-block':'none';
+  $('delPt').disabled=!(S.selV>=0&&S.selB<0);
+  $('straightBetween').disabled=!(S.selV>=0&&S.selB>=0);
+  $('autoGrain').style.display=ed?'none':'inline-block';
+  $('scaleRow').style.display=(S.tool==='measure'&&S.marks.measure)?'flex':'none';
+  const m=S.marks, parts=[HINTS[S.tool]];
+  if(S.tool==='edge'){const n=S.outline.length;let per=0;for(let i=0;i<n;i++){const a=S.outline[i],b=S.outline[(i+1)%n];per+=Math.hypot(b[0]-a[0],b[1]-a[1]);} if(per/n*S.k<7) parts.push('Pinch to zoom in to see the points.');}
+  parts.push(`${S.outline.length} points, ${m.notches.length} notch${m.notches.length===1?'':'es'}, ${m.lines.length} line${m.lines.length===1?'':'s'}, ${m.drills.length} drill hole${m.drills.length===1?'':'s'}, ${m.grain?'grainline set':'no grainline yet (faint line shows the default)'}.`);
+  $('markStatus').textContent=parts.join(' ');
+}
+function shortPath(i,j,n){ // indices strictly between i and j along the shorter way round
+  const f=[],b=[]; for(let k=(i+1)%n;k!==j;k=(k+1)%n) f.push(k); for(let k=(i-1+n)%n;k!==j;k=(k-1+n)%n) b.push(k);
+  return f.length<=b.length?f:b;
+}
+$('straightBetween').onclick=()=>{
+  if(S.selV<0||S.selB<0) return;
+  const n=S.outline.length, mid=new Set(shortPath(S.selV,S.selB,n));
+  if(n-mid.size<3){toast('That would leave too few points.');return;}
+  snapshot(); S.outline=S.outline.filter((_,k)=>!mid.has(k));
+  S.selV=-1;S.selB=-1;S.edited=true; updateMarkStatus(); render();
+  toast(mid.size?`Replaced ${mid.size} point${mid.size===1?'':'s'} with a straight line.`:'Those points are already joined by a straight line.');
+};
+$('fixScale').onclick=()=>{
+  const m=S.marks.measure, t=+$('trueLen').value;
+  if(!m){toast('Measure a known distance first.');return;}
+  if(!(t>0)){toast('Enter the real length in inches.');return;}
+  const old=S.ppi; S.ppi=dist(m.a,m.b)/t;
+  toast(`Scale corrected by ${((old/S.ppi)*100).toFixed(1)}%. The measurement now reads ${t} in.`);
+  $('trueLen').value=''; updateMarkStatus(); render();
+};
+$('delPt').onclick=()=>{
+  if(S.selV<0||S.selB>=0||!S.outline) return;
+  if(S.outline.length<=3){toast('An outline needs at least three points.');return;}
+  snapshot(); S.outline.splice(S.selV,1); S.selV=-1; S.edited=true; updateMarkStatus(); render();
+};
+$('autoGrain').onclick=()=>{ if(!S.outline) return; snapshot(); S.marks.grain=defaultGrain(S.outline); updateMarkStatus(); render(); };
+$('undo').onclick=()=>{
+  const s=S.hist.pop(); if(!s){toast('Nothing to undo.');return;}
+  const o=JSON.parse(s); S.marks.notches=o.n; S.marks.grain=o.g; S.marks.drills=o.d; S.marks.lines=o.l||[]; if(o.o) S.outline=o.o; S.edited=!!o.e; S.selV=-1; S.selB=-1; updateMarkStatus(); render();
+};
+$('smooth').oninput=()=>{ if(!S.raw||S.edited) return; S.outline=simplifyClosed(S.raw,tolPx()); updateMarkStatus(); render(); };
+$('nDepth').oninput=()=>render();
+$('savePiece').onclick=()=>{
+  if(!S.outline) return;
+  const name=$('pName').value.trim()||('PIECE-'+(S.pieces.length+1));
+  const piece=buildPiece(S.outline,S.marks,S.ppi,{name,size:$('pSize').value.trim(),qty:Math.max(1,parseInt($('pQty').value)||1)},+$('nDepth').value||0.25);
+  S.pieces.push(piece);
+  toast(piece.grainDefault?`Saved ${name} with a default straight grainline.`:`Saved ${name}.`);
+  go('export');
+};
+
+// ----- step 5: export -----
+function renderPieceList(){
+  const ul=$('pieceList'); ul.innerHTML='';
+  if(!S.pieces.length){ul.innerHTML='<li>No pieces saved yet.</li>';return;}
+  S.pieces.forEach((p,i)=>{
+    const li=document.createElement('li');
+    li.innerHTML=`<div><div>${cleanName(p.name,'PIECE-'+(i+1))}${p.size?' ('+p.size.replace(/</g,'')+')':''}</div><div class="meta">${p.w.toFixed(2)} × ${p.h.toFixed(2)} in, ${p.notches.length} notches, ${(p.lines||[]).length} lines, qty ${p.qty}</div></div>`;
+    const b=document.createElement('button');b.textContent='Remove';
+    b.onclick=()=>{S.pieces.splice(i,1);buildPreview();renderPieceList();render();go(S.pieces.length?'export':'mark');};
+    li.appendChild(b);ul.appendChild(li);
+  });
+}
+function buildPreview(){
+  if(!S.pieces.length){S.preview=null;return;}
+  const gap=2, totalW=S.pieces.reduce((s,p)=>s+p.w,0)+gap*(S.pieces.length+1), maxH=Math.max(...S.pieces.map(p=>p.h))+gap*2;
+  const k=Math.min(40,2400/Math.max(totalW,maxH));
+  const W=Math.round(totalW*k),H=Math.round(maxH*k);
+  const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
+  x.fillStyle='#fff';x.fillRect(0,0,W,H);
+  let ox=gap;
+  const T=(p,pt)=>[(ox+pt[0])*k,H-(gap+pt[1])*k];
+  for(const p of S.pieces){
+    x.beginPath();p.verts.forEach((v,i)=>{const [a,b]=T(p,v.xy);i?x.lineTo(a,b):x.moveTo(a,b);});x.closePath();
+    x.fillStyle='#F3F6F4';x.fill();x.lineWidth=2;x.strokeStyle='#23262A';x.stroke();
+    x.strokeStyle='#D2372C';x.lineWidth=2;for(const q of p.notches){const a=T(p,[q[0],q[1]]),b=T(p,[q[2],q[3]]);x.beginPath();x.moveTo(...a);x.lineTo(...b);x.stroke();}
+    x.strokeStyle='#2F6FD0';{const a=T(p,[p.grain[0],p.grain[1]]),b=T(p,[p.grain[2],p.grain[3]]);x.beginPath();x.moveTo(...a);x.lineTo(...b);x.stroke();}
+    for(const d of p.drills){const a=T(p,d);x.beginPath();x.arc(a[0],a[1],4,0,Math.PI*2);x.stroke();}
+    x.strokeStyle='#6B4FA0';for(const q of p.lines||[]){const a=T(p,[q[0],q[1]]),b=T(p,[q[2],q[3]]);x.beginPath();x.moveTo(...a);x.lineTo(...b);x.stroke();}
+    ox+=p.w+gap;
+  }
+  S.preview={canvas:c,w:W,h:H};
+}
+function dxfText(){return makeDXF(S.pieces,{units:$('units').value,style:$('styleName').value});}
+function fileName(){return cleanName($('styleName').value,'patterns')+'.dxf';}
+$('download').onclick=()=>{
+  const blob=new Blob([dxfText()],{type:'application/dxf'}), url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=fileName();document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+  toast('If nothing downloaded, tap Copy DXF and paste it into your chat with Claude.');
+};
+$('copy').onclick=async()=>{
+  const t=dxfText();
+  const ta=$('dxfText'); ta.value=t; ta.style.display='block';
+  try{await navigator.clipboard.writeText(t);toast('DXF copied. Paste it into your chat with Claude to get a .dxf file.');}
+  catch{
+    try{ta.focus();ta.select();ta.setSelectionRange(0,t.length);if(document.execCommand('copy')){toast('DXF copied. Paste it into your chat with Claude to get a .dxf file.');return;}}catch(e){}
+    toast('Touch and hold the text box below, choose Select All, then Copy.');
+  }
+};
+if(navigator.canShare&&window.File){
+  try{ if(navigator.canShare({files:[new File(['x'],'t.dxf',{type:'text/plain'})]})) $('share').style.display='inline-block'; }catch{}
+}
+$('share').onclick=async()=>{
+  try{await navigator.share({files:[new File([dxfText()],fileName(),{type:'application/dxf'})],title:fileName()});}
+  catch(e){ if(e.name!=='AbortError') toast('Sharing isn\'t available here. Use Download or Copy.'); }
+};
+$('another').onclick=()=>{ if(!S.rect){toast('Start with a photo.');return;} S.sel=-1; segment(); go('trace'); };
+$('newPhoto').onclick=()=>go('photo');
+
+go('photo');
+</script>
+
+</body>
+</html>
