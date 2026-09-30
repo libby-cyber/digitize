@@ -698,7 +698,7 @@ const HINTS={
   line:'Drag to draw a line inside the piece, such as dart legs or placement lines. Ends snap to the edge, other line ends, and drill holes.',
   edge:'Tap along a straight stretch, away from any point, to select the whole run at once, then tap Straighten between to flatten it. Tap right on a point to select just that one; tap a second point and Straighten between replaces everything in between with a straight line (this also closes a dart). Drag near the edge to move a point, or to add one where there isn\'t a point.',
   measure:'Drag between two points to check a measurement against your ruler.',
-  mirror:'For a symmetrical piece. Drag to draw the mid line down the centre of the garment, then tap the side you want to keep; the other side is cut away. The fold exports on layer 6, so AccuMark mirrors it back to the full piece on import.',
+  mirror:'For a symmetrical piece. Drag to draw the mid line down the centre of the garment, then tap the side you want to keep; the other side is cut away. To reposition it, drag the line itself to slide it, or drag either round end to swing it. The fold exports on layer 6, so AccuMark mirrors it back to the full piece on import.',
   erase:'Tap a notch, drill hole, line, or grainline to remove it. To remove outline points, use Edit edge.'
 };
 
@@ -827,6 +827,11 @@ function drawOverlay(ctx,u){
       ctx.restore();
     };
     if(S.marks.mirror) drawMirror(S.marks.mirror,1);
+    if(S.marks.mirror&&S.tool==='mirror'){
+      const m=S.marks.mirror;
+      dot(ctx,m.a.x,m.a.y,5*u,'#fff','#0E9F6E',u);
+      dot(ctx,m.b.x,m.b.y,5*u,'#fff','#0E9F6E',u);
+    }
     if(S.drag&&S.drag.type==='mirror'&&dist(S.drag.a,S.drag.b)>=25*u) drawMirror({a:S.drag.a,b:S.drag.b},0.8);
     const LC='#6B4FA0';
     for(const l of S.marks.lines){line(ctx,[l.a.x,l.a.y],[l.b.x,l.b.y],2.5*u,LC);dot(ctx,l.a.x,l.a.y,3*u,LC);dot(ctx,l.b.x,l.b.y,3*u,LC);}
@@ -935,7 +940,15 @@ view.addEventListener('pointerdown',e=>{
     S.drag={type:'pick',p};
   } else if(S.step==='mark'){
     const t=S.tool;
-    if(t==='grain'||t==='measure'||t==='mirror') S.drag={type:t,a:{...p},b:{...p}};
+    if(t==='mirror'&&S.marks.mirror){
+      // Grab the existing line rather than drawing a new one: an end to swing it, the body to slide it.
+      const m=S.marks.mirror, grab=22*u;
+      const da=dist(m.a,p), db=dist(m.b,p);
+      if(Math.min(da,db)<=grab) S.drag={type:'mirrorMove',mode:da<=db?'a':'b',st:snapState(),p0:{...p},moved:false};
+      else if(segDist(p,m.a,m.b)<=grab) S.drag={type:'mirrorMove',mode:'all',st:snapState(),p0:{...p},moved:false,a0:{...m.a},b0:{...m.b}};
+      else S.drag={type:t,a:{...p},b:{...p}};
+    }
+    else if(t==='grain'||t==='measure'||t==='mirror') S.drag={type:t,a:{...p},b:{...p}};
     else if(t==='line'){const a=snapLinePt(p,u);S.drag={type:'line',a,b:{...a}};}
     else if(t==='edge'){
       // Generous targets: any touch near the edge picks the closest point.
@@ -962,6 +975,22 @@ view.addEventListener('pointermove',e=>{
   if(!S.drag) return;
   const p=toBase(e), d=S.drag;
   if(d.type==='corner'){const q={x:p.x+d.off.x,y:p.y+d.off.y};S.corners[d.i]={x:Math.max(0,Math.min(S.src.w,q.x)),y:Math.max(0,Math.min(S.src.h,q.y))};}
+  else if(d.type==='mirrorMove'){
+    if(!d.moved&&dist(p,d.p0)>4/S.k) d.moved=true;
+    if(d.moved){
+      const m=S.marks.mirror;
+      if(d.mode==='all'){
+        const dx=p.x-d.p0.x, dy=p.y-d.p0.y;
+        m.a={x:d.a0.x+dx,y:d.a0.y+dy}; m.b={x:d.b0.x+dx,y:d.b0.y+dy};
+      } else {
+        const fixed=d.mode==='a'?m.b:m.a;
+        let q={x:p.x,y:p.y};
+        const ang=Math.atan2(q.y-fixed.y,q.x-fixed.x), sn=Math.round(ang/(Math.PI/2))*(Math.PI/2);
+        if(Math.abs(ang-sn)<2*Math.PI/180){const L=dist(fixed,q);q={x:fixed.x+L*Math.cos(sn),y:fixed.y+L*Math.sin(sn)};}
+        if(d.mode==='a') m.a=q; else m.b=q;
+      }
+    }
+  }
   else if(d.type==='grain'||d.type==='measure'||d.type==='mirror') d.b={...p};
   else if(d.type==='line') d.b=snapLinePt(p,1/S.k);
   else if(d.type==='vertex'){
@@ -1009,6 +1038,10 @@ function endDrag(e){
       if(Math.abs(ang-snap)<2*Math.PI/180){const L=dist(d.a,d.b);b={x:d.a.x+L*Math.cos(snap),y:d.a.y+L*Math.sin(snap)};}
       snapshot();S.marks.grain={a:d.a,b};
     }
+  }
+  if(d.type==='mirrorMove'){
+    if(d.moved){pushHist(d.st);toast('Mid line moved. Tap a side to keep that half.');}
+    else toast('Drag the line to move it, or tap further from it to pick the side to keep.');
   }
   if(d.type==='mirror'){
     if(dist(d.a,d.b)<25*u){
