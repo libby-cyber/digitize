@@ -1087,26 +1087,43 @@ view.addEventListener('pointercancel',e=>pointerEnd(e,true));
 function segDist(p,a,b){const dx=b.x-a.x,dy=b.y-a.y,L2=dx*dx+dy*dy;let t=L2?((p.x-a.x)*dx+(p.y-a.y)*dy)/L2:0;t=Math.max(0,Math.min(1,t));return Math.hypot(p.x-a.x-t*dx,p.y-a.y-t*dy);}
 // Sutherland-Hodgman clip of the closed outline against the half-plane on side `sgn`
 // of the mid line. A half-plane is convex, so this is exact for one component.
-function clipHalfPlane(P,m,sgn){
+function clipHalfPlane(P,m,sgn,tol){
   const side=q=>(m.b.x-m.a.x)*(q[1]-m.a.y)-(m.b.y-m.a.y)*(q[0]-m.a.x);
   const inside=q=>sgn*side(q)>=0;
-  const cut=(q,r)=>{const s1=side(q),s2=side(r),t=s1/(s1-s2);return [q[0]+t*(r[0]-q[0]),q[1]+t*(r[1]-q[1])];};
-  const out=[];
+  const cross=(q,r)=>{const s1=side(q),s2=side(r),t=s1/(s1-s2);return [q[0]+t*(r[0]-q[0]),q[1]+t*(r[1]-q[1])];};
+  let out=[];
   for(let i=0;i<P.length;i++){
     const cur=P[i],prv=P[(i-1+P.length)%P.length];
     const ci=inside(cur),pi=inside(prv);
-    if(ci){ if(!pi) out.push(cut(prv,cur)); out.push(cur.slice()); }
-    else if(pi) out.push(cut(prv,cur));
+    if(ci){ if(!pi) out.push({p:cross(prv,cur),cut:true}); out.push({p:cur.slice(),cut:false}); }
+    else if(pi) out.push({p:cross(prv,cur),cut:true});
   }
   // The fold often runs exactly through existing vertices, which yields a cut point
   // on top of one. Drop coincident neighbours so no zero-length segment reaches the DXF.
-  const eps=1e-6, clean=[];
+  const eps=1e-6; const clean=[];
   for(const q of out){
     const last=clean[clean.length-1];
-    if(!last||Math.hypot(q[0]-last[0],q[1]-last[1])>eps) clean.push(q);
+    if(!last||Math.hypot(q.p[0]-last.p[0],q.p[1]-last.p[1])>eps) clean.push(q);
+    else if(q.cut) last.cut=true;
   }
-  while(clean.length>1&&Math.hypot(clean[0][0]-clean[clean.length-1][0],clean[0][1]-clean[clean.length-1][1])<=eps) clean.pop();
-  return clean;
+  while(clean.length>1&&Math.hypot(clean[0].p[0]-clean[clean.length-1].p[0],clean[0].p[1]-clean[clean.length-1].p[1])<=eps) clean.pop();
+  // The trace wobbles as it nears the fold, so a leftover traced point a hair inside the
+  // cut leaves a spur that reads as a stray pivot point in PDS. Drop points that close to a cut.
+  if(tol>0){
+    for(let guard=0;guard<P.length&&clean.length>3;guard++){
+      let hit=-1;
+      for(let i=0;i<clean.length;i++){
+        if(clean[i].cut) continue;
+        const pv=clean[(i-1+clean.length)%clean.length], nx=clean[(i+1)%clean.length];
+        const dp=Math.hypot(clean[i].p[0]-pv.p[0],clean[i].p[1]-pv.p[1]);
+        const dn=Math.hypot(clean[i].p[0]-nx.p[0],clean[i].p[1]-nx.p[1]);
+        if((pv.cut&&dp<=tol)||(nx.cut&&dn<=tol)){hit=i;break;}
+      }
+      if(hit<0) break;
+      clean.splice(hit,1);
+    }
+  }
+  return clean.map(q=>q.p);
 }
 // Keep the half of the piece that `p` falls in; marks on the far side go with it.
 function splitAtMirror(p){
@@ -1115,7 +1132,7 @@ function splitAtMirror(p){
   const s=side([p.x,p.y]);
   if(Math.abs(s)<1e-6){toast('Tap further from the mid line so I know which side to keep.');return;}
   const sgn=s>0?1:-1;
-  const clipped=clipHalfPlane(S.outline,m,sgn);
+  const clipped=clipHalfPlane(S.outline,m,sgn,0.125*S.ppi);
   if(clipped.length<3){toast('Nothing on that side. Tap the other side of the line.');return;}
   snapshot();
   const before=S.outline.length;
