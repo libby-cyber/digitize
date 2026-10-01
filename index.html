@@ -688,7 +688,7 @@ const S={
   step:'photo', src:null, corners:[], rect:null, ppi:0, score:null,
   thr:128, invert:false, openR:3, labels:null, comps:[], sel:-1, overlay:null,
   raw:null, outline:null, marks:{notches:[],grain:null,drills:[],lines:[],measure:null,mirror:null}, edited:false, selV:-1, selB:-1, autoMsg:'',
-  tool:'notch', hist:[], pieces:[], drag:null, vs:1, preview:null
+  tool:'notch', hist:[], pieces:[], drag:null, vs:1, preview:null, previewBoxes:[], editIdx:-1
 };
 const STEPS=['photo','calibrate','trace','mark','export'];
 const HINTS={
@@ -936,6 +936,8 @@ view.addEventListener('pointerdown',e=>{
     if(S.corners.length<4&&bd>44*u){S.corners.push({...p});bi=S.corners.length-1;added=true;}
     const c=S.corners[bi];
     S.drag={type:'corner',i:bi,added,off:{x:c.x-p.x,y:c.y-p.y}};
+  } else if(S.step==='export'){
+    S.drag={type:'pickPiece',p};
   } else if(S.step==='trace'){
     S.drag={type:'pick',p};
   } else if(S.step==='mark'){
@@ -960,7 +962,7 @@ view.addEventListener('pointerdown',e=>{
     }
     else S.drag={type:t,p};
   }
-  if(S.drag&&S.step!=='trace'&&S.drag.type!=='erase') showLoupe(e);
+  if(S.drag&&S.step!=='trace'&&S.drag.type!=='erase'&&S.drag.type!=='pickPiece') showLoupe(e);
   render();
 });
 view.addEventListener('pointermove',e=>{
@@ -1015,6 +1017,11 @@ function endDrag(e){
   const d=S.drag; if(!d) return; S.drag=null; hideLoupe();
   const u=1/S.k;
   if(d.type==='corner'){ snapCorner(d.i); autoCount(); updateCalStatus(); }
+  if(d.type==='pickPiece'){
+    const hit=(S.previewBoxes||[]).find(b=>d.p.x>=b.x0&&d.p.x<=b.x1&&d.p.y>=b.y0&&d.p.y<=b.y1);
+    if(hit) editPiece(hit.i);
+    else toast('Tap a piece in the layout to edit it.');
+  }
   if(d.type==='pick'){
     const x=Math.floor(d.p.x),y=Math.floor(d.p.y);
     const id=(x>=0&&y>=0&&x<S.rect.w&&y<S.rect.h)?S.labels[y*S.rect.w+x]:0;
@@ -1468,12 +1475,40 @@ $('smooth').oninput=()=>{ if(!S.raw||S.edited) return; S.outline=simplifyClosed(
 $('nDepth').oninput=()=>render();
 $('savePiece').onclick=()=>{
   if(!S.outline) return;
-  const name=$('pName').value.trim()||('PIECE-'+(S.pieces.length+1));
-  const piece=buildPiece(S.outline,S.marks,S.ppi,{name,size:$('pSize').value.trim(),qty:Math.max(1,parseInt($('pQty').value)||1)},+$('nDepth').value||0.25);
-  S.pieces.push(piece);
-  toast(piece.grainDefault?`Saved ${name} with a default straight grainline.`:`Saved ${name}.`);
+  const name=$('pName').value.trim()||('PIECE-'+(S.editIdx>=0?S.editIdx+1:S.pieces.length+1));
+  const meta={name,size:$('pSize').value.trim(),qty:Math.max(1,parseInt($('pQty').value)||1)};
+  const depth=+$('nDepth').value||0.25;
+  const piece=buildPiece(S.outline,S.marks,S.ppi,meta,depth);
+  // Keep enough to reopen this piece later. rect is the rectified photo, shared by
+  // every piece traced from the same shot, so this is a reference and not a copy.
+  piece.edit={
+    outline:JSON.parse(JSON.stringify(S.outline)),
+    marks:JSON.parse(JSON.stringify(S.marks)),
+    ppi:S.ppi, rect:S.rect, depth, meta, edited:S.edited
+  };
+  if(S.editIdx>=0){ S.pieces[S.editIdx]=piece; toast(`Updated ${name}.`); }
+  else { S.pieces.push(piece); toast(piece.grainDefault?`Saved ${name} with a default straight grainline.`:`Saved ${name}.`); }
+  endEdit();
   go('export');
 };
+function endEdit(){ S.editIdx=-1; $('savePiece').textContent='Save piece'; }
+// Reopen a saved piece with its own photo, outline and marks.
+function editPiece(i){
+  const p=S.pieces[i], e=p&&p.edit;
+  if(!e){toast('That piece was saved before editing existed. Re-trace it to change it.');return;}
+  S.editIdx=i;
+  if(e.rect) S.rect=e.rect;
+  S.ppi=e.ppi;
+  S.outline=JSON.parse(JSON.stringify(e.outline));
+  S.marks=JSON.parse(JSON.stringify(e.marks));
+  S.edited=!!e.edited; S.hist=[]; S.selV=-1; S.selB=-1; S.drag=null;
+  $('pName').value=e.meta.name||''; $('pSize').value=e.meta.size||''; $('pQty').value=e.meta.qty||1;
+  $('nDepth').value=e.depth;
+  $('savePiece').textContent='Update piece';
+  S.viewBase=null;             // force the view to refit to this piece's photo
+  go('mark');
+  toast(`Editing ${e.meta.name}. Update piece puts it back in the list.`);
+}
 
 // ----- step 5: export -----
 function renderPieceList(){
@@ -1482,13 +1517,16 @@ function renderPieceList(){
   S.pieces.forEach((p,i)=>{
     const li=document.createElement('li');
     li.innerHTML=`<div><div>${cleanName(p.name,'PIECE-'+(i+1))}${p.size?' ('+p.size.replace(/</g,'')+')':''}</div><div class="meta">${p.w.toFixed(2)} × ${p.h.toFixed(2)} in, ${p.notches.length} notches, ${(p.lines||[]).length} lines, qty ${p.qty}</div></div>`;
+    const ed=document.createElement('button');ed.textContent='Edit';
+    ed.onclick=()=>editPiece(i);
+    li.appendChild(ed);
     const b=document.createElement('button');b.textContent='Remove';
-    b.onclick=()=>{S.pieces.splice(i,1);buildPreview();renderPieceList();render();go(S.pieces.length?'export':'mark');};
+    b.onclick=()=>{S.pieces.splice(i,1);if(S.editIdx===i)endEdit();else if(S.editIdx>i)S.editIdx--;buildPreview();renderPieceList();render();go(S.pieces.length?'export':'mark');};
     li.appendChild(b);ul.appendChild(li);
   });
 }
 function buildPreview(){
-  if(!S.pieces.length){S.preview=null;return;}
+  if(!S.pieces.length){S.preview=null;S.previewBoxes=[];return;}
   const gap=2, totalW=S.pieces.reduce((s,p)=>s+p.w,0)+gap*(S.pieces.length+1), maxH=Math.max(...S.pieces.map(p=>p.h))+gap*2;
   const k=Math.min(40,2400/Math.max(totalW,maxH));
   const W=Math.round(totalW*k),H=Math.round(maxH*k);
@@ -1496,6 +1534,7 @@ function buildPreview(){
   x.fillStyle='#fff';x.fillRect(0,0,W,H);
   let ox=gap;
   const T=(p,pt)=>[(ox+pt[0])*k,H-(gap+pt[1])*k];
+  S.previewBoxes=[];
   for(const p of S.pieces){
     x.beginPath();p.verts.forEach((v,i)=>{const [a,b]=T(p,v.xy);i?x.lineTo(a,b):x.moveTo(a,b);});x.closePath();
     x.fillStyle='#F3F6F4';x.fill();x.lineWidth=2;x.strokeStyle='#23262A';x.stroke();
@@ -1503,6 +1542,7 @@ function buildPreview(){
     x.strokeStyle='#2F6FD0';{const a=T(p,[p.grain[0],p.grain[1]]),b=T(p,[p.grain[2],p.grain[3]]);x.beginPath();x.moveTo(...a);x.lineTo(...b);x.stroke();}
     for(const d of p.drills){const a=T(p,d);x.beginPath();x.arc(a[0],a[1],4,0,Math.PI*2);x.stroke();}
     x.strokeStyle='#6B4FA0';for(const q of p.lines||[]){const a=T(p,[q[0],q[1]]),b=T(p,[q[2],q[3]]);x.beginPath();x.moveTo(...a);x.lineTo(...b);x.stroke();}
+    S.previewBoxes.push({i:S.previewBoxes.length,x0:ox*k,x1:(ox+p.w)*k,y0:H-(gap+p.h)*k,y1:H-gap*k});
     ox+=p.w+gap;
   }
   S.preview={canvas:c,w:W,h:H};
@@ -1532,7 +1572,7 @@ $('share').onclick=async()=>{
   try{await navigator.share({files:[new File([dxfText()],fileName(),{type:'application/dxf'})],title:fileName()});}
   catch(e){ if(e.name!=='AbortError') toast('Sharing isn\'t available here. Use Download or Copy.'); }
 };
-$('another').onclick=()=>{ if(!S.rect){toast('Start with a photo.');return;} S.sel=-1; segment(); go('trace'); };
+$('another').onclick=()=>{ if(!S.rect){toast('Start with a photo.');return;} endEdit(); S.sel=-1; segment(); go('trace'); };
 $('newPhoto').onclick=()=>clearPhoto(false);
 // Wipe the photo and everything derived from it, ready for the next pattern.
 function clearPhoto(alsoPieces){
@@ -1541,7 +1581,8 @@ function clearPhoto(alsoPieces){
   S.raw=null; S.outline=null; S.preview=null;
   S.marks={notches:[],grain:null,drills:[],lines:[],measure:null,mirror:null};
   S.hist=[]; S.edited=false; S.selV=-1; S.selB=-1; S.autoMsg='';
-  if(alsoPieces) S.pieces=[];
+  if(alsoPieces){S.pieces=[];S.previewBoxes=[];}
+  endEdit();
   go('photo');
 }
 $('startOver').onclick=()=>{
