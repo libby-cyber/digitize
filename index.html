@@ -194,7 +194,7 @@ font-size:15px;color:var(--muted);background:#fff;min-height:60px;outline:none;-
     </div>
     <div class="row">
       <label class="f">Outline smoothing <span class="v" id="smV"></span><input id="smooth" type="range" min="0.1" max="1.5" step="0.05" value="0.5"></label>
-      <label class="f">Notch depth (in)<input id="nDepth" type="number" inputmode="decimal" value="0.25" step="0.05" min="0.05"></label>
+      <label class="f">Notch depth (in)<input id="nDepth" type="number" inputmode="decimal" value="0.094" step="0.001" min="0.01"></label>
     </div>
     <button class="btn wide" id="savePiece">Save piece</button>
   </div>
@@ -508,29 +508,49 @@ function makeDXF(pieces,opt){
     g(0,'SEQEND');g(8,'1');
     for(const v of p.verts){g(0,'POINT');g(8,v.turn?'2':'3');g(10,n(v.xy[0]));g(20,n(v.xy[1]));g(30,n(0));}
     // ASTM carries the notch on the point itself: group 30 is depth along the angle,
-    // 39 is width at the boundary (0 = slit notch), 50 is the angle CCW from +X.
-    // Writing only x,y left a zero-depth, zero-angle notch that no table row matches.
+    // 39 is width at the boundary, 50 is the angle CCW from +X.
+    // AccuMark writes its own notches as depth 0.0940 / width 0.1880, i.e. a V-notch
+    // with width twice the depth. Matching that ratio is what lets the notch resolve
+    // to a table row instead of falling back; a zero width reads as a slit and did not.
     for(const q of p.notches){
-      const dx=q[2]-q[0], dy=q[3]-q[1];
+      const dx=q[2]-q[0], dy=q[3]-q[1], depth=Math.hypot(dx,dy);
       let ang=Math.atan2(dy,dx)*180/Math.PI; if(ang<0) ang+=360;
-      g(0,'POINT');g(8,'4');g(10,n(q[0]));g(20,n(q[1]));g(30,n(Math.hypot(dx,dy)));g(39,n(0));g(50,ang.toFixed(4));
+      g(0,'POINT');g(8,'4');g(10,n(q[0]));g(20,n(q[1]));g(30,n(depth));g(39,n(depth*2));g(50,ang.toFixed(4));
     }
     const q=p.grain; g(0,'LINE');g(8,'7');g(10,n(q[0]));g(20,n(q[1]));g(30,n(0));g(11,n(q[2]));g(21,n(q[3]));g(31,n(0));
     if(p.mirror){const r=p.mirror;g(0,'LINE');g(8,'6');g(10,n(r[0]));g(20,n(r[1]));g(30,n(0));g(11,n(r[2]));g(21,n(r[3]));g(31,n(0));}
     for(const q of p.lines||[]){g(0,'LINE');g(8,'8');g(10,n(q[0]));g(20,n(q[1]));g(30,n(0));g(11,n(q[2]));g(21,n(q[3]));g(31,n(0));}
     for(const d of p.drills){g(0,'POINT');g(8,'13');g(10,n(d[0]));g(20,n(d[1]));g(30,n(0));}
     const tx=p.w*0.15, ty=p.h*0.5, th=0.25;
-    txt(tx,ty,th,'Piece Name: '+nm);
-    if(p.size) txt(tx,ty-th*1.6,th,'Size: '+String(p.size).trim());
-    txt(tx,ty-th*3.2,th,'Quantity: '+(p.qty||1));
+    // Piece System Text. ASTM defines no per-piece size identifier; size is the
+    // style-wide Sample Size below. Flip and Tilt are omitted rather than guessed,
+    // since a wrong Flip would mirror the piece on import.
+    let ly=ty;
+    const pline=s=>{txt(tx,ly,th,s); ly-=th*1.6;};
+    pline('Piece Name: '+nm);
+    pline('Quantity: '+(p.qty||1)+',0');
+    pline('Rotation: 0');
+    pline('Fold: '+(p.mirror?'Y':'N'));
     g(0,'ENDBLK');g(8,'1');
   });
   g(0,'ENDSEC');
 
   g(0,'SECTION');g(2,'ENTITIES');
-  txt(0,-1,0.25,'ANSI/AAMA VERSION: 1.0.0');
-  txt(0,-1.4,0.25,'PRODUCT: '+cleanName(opt.style,'STYLE'));
-  txt(0,-1.8,0.25,'UNITS: '+(units==='mm'?'METRIC':'ENGLISH'));
+  // Style System Text, in the ASTM identifier syntax. Sample Size is where the size
+  // belongs: the standard carries one size per file, not one per piece.
+  const now=new Date(), p2=v=>String(v).padStart(2,'0');
+  const sized=pieces.find(p=>p.size&&String(p.size).trim());
+  let sy=-1;
+  const sline=s=>{txt(0,sy,0.25,s); sy-=0.4;};
+  sline('Style Name: '+cleanName(opt.style,'STYLE'));
+  sline('Creation Date: '+p2(now.getDate())+'-'+p2(now.getMonth()+1)+'-'+now.getFullYear());
+  sline('Creation Time: '+p2(now.getHours())+':'+p2(now.getMinutes()));
+  sline('Author: Malia Mills;Digitize;1.0');
+  sline('Sample Size: '+(sized?String(sized.size).trim():''));
+  sline('Grade Rule Table:');
+  sline('Units: '+(units==='mm'?'METRIC':'ENGLISH'));
+  sline('ASTM/D13 Proposal 1 Version: XX');
+  sline('Curve Tolerance: '+(units==='mm'?'0.25':'0.0100'));
   let ox=0;
   pieces.forEach((p,i)=>{
     g(0,'INSERT');g(8,'1');g(2,names[i]);g(10,n(ox));g(20,n(0));g(30,n(0));
