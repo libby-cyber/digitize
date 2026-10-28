@@ -1591,13 +1591,13 @@ $('another').onclick=()=>{ if(!S.rect){toast('Start with a photo.');return;} end
 $('newPhoto').onclick=()=>clearPhoto(false);
 // Wipe the photo and everything derived from it, ready for the next pattern.
 function clearPhoto(alsoPieces){
+  endEdit();                 // before the resets, or it restores the photo we are clearing
   S.src=null; S.corners=[]; S.rect=null; S.ppi=0; S.score=null;
   S.labels=null; S.comps=[]; S.sel=-1; S.overlay=null;
   S.raw=null; S.outline=null; S.preview=null;
   S.marks={notches:[],grain:null,drills:[],lines:[],measure:null,mirror:null};
   S.hist=[]; S.edited=false; S.selV=-1; S.selB=-1; S.autoMsg='';
   if(alsoPieces){S.pieces=[];S.previewBoxes=[];}
-  endEdit();
   go('photo');
 }
 $('startOver').onclick=()=>{
