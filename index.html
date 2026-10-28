@@ -482,78 +482,67 @@ function cleanName(s,fallback){
   return t||fallback;
 }
 // AAMA/ASTM-style DXF (R12 ASCII)
+// Modelled on AccuMark's own ASTM export (Patterns/4197.dxf), not on the generic
+// spec write-up: empty HEADER, no TABLES, every TEXT carries a 7 STANDARD style,
+// POINTs carry no Z, and the identifiers are the ones Gerber actually writes.
 function makeDXF(pieces,opt){
   const units=opt.units==='mm'?'mm':'in', f=units==='mm'?25.4:1;
   const out=[]; const g=(c,v)=>{out.push(String(c));out.push(String(v));};
   const n=v=>(v*f).toFixed(4);
-  g(0,'SECTION');g(2,'HEADER');g(9,'$ACADVER');g(1,'AC1009');g(9,'$INSUNITS');g(70,units==='mm'?4:1);g(0,'ENDSEC');
-  g(0,'SECTION');g(2,'TABLES');
-  g(0,'TABLE');g(2,'LTYPE');g(70,1);g(0,'LTYPE');g(2,'CONTINUOUS');g(70,0);g(3,'Solid line');g(72,65);g(73,0);g(40,'0.0');g(0,'ENDTAB');
-  const layers=[['1',7],['2',2],['3',3],['4',1],['6',6],['7',5],['8',6],['13',4]];
-  g(0,'TABLE');g(2,'LAYER');g(70,layers.length);
-  for(const [nm,col] of layers){g(0,'LAYER');g(2,nm);g(70,0);g(62,col);g(6,'CONTINUOUS');}
-  g(0,'ENDTAB');g(0,'ENDSEC');
+  g(0,'SECTION');g(2,'HEADER');g(0,'ENDSEC');
 
   const used=new Set(), names=pieces.map((p,i)=>{
     let b=cleanName(p.name,'PIECE-'+(i+1)), k=b, c=2; while(used.has(k)) k=b+'-'+(c++); used.add(k); return k;
   });
-  const txt=(x,y,h,s)=>{g(0,'TEXT');g(8,'1');g(10,n(x));g(20,n(y));g(30,n(0));g(40,n(h));g(1,s);};
+  // AccuMark always writes a text style; text with no 7 STANDARD is skipped on import.
+  const txt=(x,y,h,s,rot)=>{g(0,'TEXT');g(8,'1');g(10,n(x));g(20,n(y));g(40,'0.250');g(50,(rot||0).toFixed(4));g(1,s);g(7,'STANDARD');};
   g(0,'SECTION');g(2,'BLOCKS');
   pieces.forEach((p,i)=>{
     const nm=names[i];
-    g(0,'BLOCK');g(8,'1');g(2,nm);g(70,0);g(10,n(0));g(20,n(0));g(30,n(0));g(3,nm);
-    g(0,'POLYLINE');g(8,'1');g(66,1);g(10,n(0));g(20,n(0));g(30,n(0));g(70,0);
+    g(0,'BLOCK');g(8,'0');g(2,nm);g(70,64);g(10,n(0));g(20,n(0));
+    g(0,'POLYLINE');g(8,'1');g(66,1);g(10,n(0));g(20,n(0));g(70,1);
     const vs=[...p.verts,p.verts[0]];
-    for(const v of vs){g(0,'VERTEX');g(8,'1');g(10,n(v.xy[0]));g(20,n(v.xy[1]));g(30,n(0));}
+    for(const v of vs){g(0,'VERTEX');g(8,'1');g(10,n(v.xy[0]));g(20,n(v.xy[1]));}
     g(0,'SEQEND');g(8,'1');
-    for(const v of p.verts){g(0,'POINT');g(8,v.turn?'2':'3');g(10,n(v.xy[0]));g(20,n(v.xy[1]));g(30,n(0));}
-    // ASTM carries the notch on the point itself: group 30 is depth along the angle,
-    // 39 is width at the boundary, 50 is the angle CCW from +X.
-    // AccuMark writes its own notches as depth 0.0940 / width 0.1880, i.e. a V-notch
-    // with width twice the depth. Matching that ratio is what lets the notch resolve
-    // to a table row instead of falling back; a zero width reads as a slit and did not.
+    for(const v of p.verts){g(0,'POINT');g(8,v.turn?'2':'3');g(10,n(v.xy[0]));g(20,n(v.xy[1]));}
+    // Notch attributes ride on the point: 30 is depth along the notch, 39 the width at
+    // the boundary. AccuMark writes 0.0940 / 0.1880 and no angle, so neither do we.
     for(const q of p.notches){
-      const dx=q[2]-q[0], dy=q[3]-q[1], depth=Math.hypot(dx,dy);
-      let ang=Math.atan2(dy,dx)*180/Math.PI; if(ang<0) ang+=360;
-      g(0,'POINT');g(8,'4');g(10,n(q[0]));g(20,n(q[1]));g(30,n(depth));g(39,n(depth*2));g(50,ang.toFixed(4));
+      const depth=Math.hypot(q[2]-q[0],q[3]-q[1]);
+      g(0,'POINT');g(8,'4');g(10,n(q[0]));g(20,n(q[1]));g(30,n(depth));g(39,n(depth*2));
     }
-    const q=p.grain; g(0,'LINE');g(8,'7');g(10,n(q[0]));g(20,n(q[1]));g(30,n(0));g(11,n(q[2]));g(21,n(q[3]));g(31,n(0));
-    if(p.mirror){const r=p.mirror;g(0,'LINE');g(8,'6');g(10,n(r[0]));g(20,n(r[1]));g(30,n(0));g(11,n(r[2]));g(21,n(r[3]));g(31,n(0));}
-    for(const q of p.lines||[]){g(0,'LINE');g(8,'8');g(10,n(q[0]));g(20,n(q[1]));g(30,n(0));g(11,n(q[2]));g(21,n(q[3]));g(31,n(0));}
-    for(const d of p.drills){g(0,'POINT');g(8,'13');g(10,n(d[0]));g(20,n(d[1]));g(30,n(0));}
-    const tx=p.w*0.15, ty=p.h*0.5, th=0.25;
-    // Piece System Text. ASTM defines no per-piece size identifier; size is the
-    // style-wide Sample Size below. Flip and Tilt are omitted rather than guessed,
-    // since a wrong Flip would mirror the piece on import.
-    let ly=ty;
-    const pline=s=>{txt(tx,ly,th,s); ly-=th*1.6;};
+    const q=p.grain; g(0,'LINE');g(8,'7');g(10,n(q[0]));g(20,n(q[1]));g(11,n(q[2]));g(21,n(q[3]));
+    if(p.mirror){const r=p.mirror;g(0,'LINE');g(8,'6');g(10,n(r[0]));g(20,n(r[1]));g(11,n(r[2]));g(21,n(r[3]));}
+    for(const l of p.lines||[]){g(0,'LINE');g(8,'8');g(10,n(l[0]));g(20,n(l[1]));g(11,n(l[2]));g(21,n(l[3]));}
+    for(const d of p.drills){g(0,'POINT');g(8,'13');g(10,n(d[0]));g(20,n(d[1]));}
+    // Piece System Text, in Gerber's own identifiers. SIZE is upper case and the text
+    // is case sensitive, which is why a 'Size:' line was silently ignored.
+    const tx=p.w*0.15; let ly=p.h*0.5;
+    const pline=s=>{txt(tx,ly,0.25,s); ly-=0.4;};
     pline('Piece Name: '+nm);
+    if(p.size) pline('SIZE: '+String(p.size).trim());
     pline('Quantity: '+(p.qty||1)+',0');
-    pline('Rotation: 0');
-    pline('Fold: '+(p.mirror?'Y':'N'));
     g(0,'ENDBLK');g(8,'1');
   });
   g(0,'ENDSEC');
 
   g(0,'SECTION');g(2,'ENTITIES');
-  // Style System Text, in the ASTM identifier syntax. Sample Size is where the size
-  // belongs: the standard carries one size per file, not one per piece.
+  // Style System Text, matching AccuMark's identifiers, order and rotation exactly.
   const now=new Date(), p2=v=>String(v).padStart(2,'0');
   const sized=pieces.find(p=>p.size&&String(p.size).trim());
-  let sy=-1;
-  const sline=s=>{txt(0,sy,0.25,s); sy-=0.4;};
+  let sy=0;
+  const sline=s=>{txt(0,sy,0.25,s,270); sy+=0.14;};
   sline('Style Name: '+cleanName(opt.style,'STYLE'));
   sline('Creation Date: '+p2(now.getDate())+'-'+p2(now.getMonth()+1)+'-'+now.getFullYear());
   sline('Creation Time: '+p2(now.getHours())+':'+p2(now.getMinutes()));
-  sline('Author: Malia Mills;Digitize;1.0');
+  sline('Author: MALIA MILLS ; DIGITIZE ; 1.0');
   sline('Sample Size: '+(sized?String(sized.size).trim():''));
-  sline('Grade Rule Table:');
   sline('Units: '+(units==='mm'?'METRIC':'ENGLISH'));
-  sline('ASTM/D13 Proposal 1 Version: XX');
-  sline('Curve Tolerance: '+(units==='mm'?'0.25':'0.0100'));
+  sline('Curve Tolerance: '+(units==='mm'?'.150':'.006'));
+  sline('ASTM/D13Proposal 1 Version: D 6673-04');
   let ox=0;
   pieces.forEach((p,i)=>{
-    g(0,'INSERT');g(8,'1');g(2,names[i]);g(10,n(ox));g(20,n(0));g(30,n(0));
+    g(0,'INSERT');g(8,'1');g(2,names[i]);g(10,n(ox));g(20,n(0));
     ox+=p.w+2;
   });
   g(0,'ENDSEC');g(0,'EOF');
@@ -708,7 +697,7 @@ const S={
   step:'photo', src:null, corners:[], rect:null, ppi:0, score:null,
   thr:128, invert:false, openR:3, labels:null, comps:[], sel:-1, overlay:null,
   raw:null, outline:null, marks:{notches:[],grain:null,drills:[],lines:[],measure:null,mirror:null}, edited:false, selV:-1, selB:-1, autoMsg:'',
-  tool:'notch', hist:[], pieces:[], drag:null, vs:1, preview:null, previewBoxes:[], editIdx:-1
+  tool:'notch', hist:[], pieces:[], drag:null, vs:1, preview:null, previewBoxes:[], editIdx:-1, preEdit:null
 };
 const STEPS=['photo','calibrate','trace','mark','export'];
 const HINTS={
@@ -1511,11 +1500,17 @@ $('savePiece').onclick=()=>{
   endEdit();
   go('export');
 };
-function endEdit(){ S.editIdx=-1; $('savePiece').textContent='Save piece'; }
+function endEdit(){
+  // Editing swaps in that piece's own photo and scale; put the live ones back or the
+  // next trace runs at the wrong pixels-per-inch and comes out the wrong size.
+  if(S.preEdit){ S.rect=S.preEdit.rect; S.ppi=S.preEdit.ppi; S.viewBase=null; S.preEdit=null; }
+  S.editIdx=-1; $('savePiece').textContent='Save piece';
+}
 // Reopen a saved piece with its own photo, outline and marks.
 function editPiece(i){
   const p=S.pieces[i], e=p&&p.edit;
   if(!e){toast('That piece was saved before editing existed. Re-trace it to change it.');return;}
+  if(S.editIdx<0) S.preEdit={rect:S.rect,ppi:S.ppi};
   S.editIdx=i;
   if(e.rect) S.rect=e.rect;
   S.ppi=e.ppi;
