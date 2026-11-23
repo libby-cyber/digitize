@@ -677,11 +677,36 @@ function countSquares(d,w,h,Hq,along){ // Hq maps unit square (u,v) -> image; al
       for(let q=lo;q<=hi;q++) if(ac[q]>bv){bv=ac[q];bj=q;} if(bj>5&&bj<maxLag&&bv>0) per=refine(bj)/m;}
     const n=(N-1)/per; return {lag:j,n,strength:ac[j]/gmax,spacing:per};
   });
-  // The main grid is the strongest repeat, full stop. This used to step down to the
-  // half period whenever that peak was 85% as strong, which is precisely what a mat
-  // with half-size lines inside its main squares looks like - so the count came back
-  // doubled and corners landed on half squares.
-  const c=cands.reduce((x,y)=>y.strength>x.strength?y:x);
+  // The strongest repeat is always the FINEST pitch, so on a mat with half-size lines
+  // inside its main squares it is the sub-division, and the count comes back doubled.
+  // Tell them apart by prominence: lay the detected lattice over the high-passed
+  // profile and compare alternate lines. If every other line is clearly brighter, the
+  // main grid is twice that spacing. If the lines are uniform the two are genuinely
+  // indistinguishable from the photo, so keep the fine pitch and let the whole-number
+  // check decide whether to ask for a hand count.
+  const phaseOf=per=>{
+    let bo=0,bv=-Infinity;
+    for(let o=0;o<Math.round(per);o++){
+      let s=0,cnt=0;
+      for(let t=o;t<N;t+=per){const i=Math.round(t); if(i>=0&&i<N){s+=Math.max(0,x[i]);cnt++;}}
+      if(cnt&&s/cnt>bv){bv=s/cnt;bo=o;}
+    }
+    return bo;
+  };
+  const altMean=(per,o,parity)=>{
+    let s=0,cnt=0;
+    for(let k=parity;;k+=2){const t=o+k*per; if(t>=N) break; const i=Math.round(t); if(i>=0&&i<N){s+=Math.max(0,x[i]);cnt++;}}
+    return cnt?s/cnt:0;
+  };
+  let c=cands.reduce((p,q)=>q.strength>p.strength?q:p);
+  for(let step=0;step<2;step++){
+    const per=c.spacing, o=phaseOf(per);
+    const hi=Math.max(altMean(per,o,0),altMean(per,o,1)), lo=Math.min(altMean(per,o,0),altMean(per,o,1));
+    if(!(lo>0)||hi/lo<1.25) break;
+    const dbl=cands.find(q=>Math.abs(q.spacing-per*2)<=Math.max(2,per*0.16));
+    if(!dbl) break;
+    c=dbl;
+  }
   return finishCount(c,cands);
 }
 function finishCount(c,cands){
