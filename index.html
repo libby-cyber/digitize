@@ -172,6 +172,7 @@ font-size:15px;color:var(--muted);background:#fff;min-height:60px;outline:none;-
       <button data-tool="drill" aria-pressed="false"><span class="sw" style="color:var(--chalk);border-radius:2px"></span>Drill hole</button>
       <button data-tool="line" aria-pressed="false"><span class="sw" style="color:#6B4FA0;border-radius:1px;height:3px;width:14px;background:currentColor;border:0"></span>Line</button>
       <button data-tool="mirror" aria-pressed="false"><span class="sw" style="color:#0E9F6E;border-radius:0;height:14px;width:3px;background:currentColor;border:0"></span>Mid line</button>
+      <button data-tool="arrow" aria-pressed="false"><span class="sw" style="color:#C2410C;border-radius:0;height:0;width:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:9px solid currentColor;border-top:0"></span>Arrow</button>
       <button data-tool="edge" aria-pressed="false"><span class="sw" style="color:var(--ink);border-radius:2px"></span>Edit edge</button>
       <button data-tool="measure" aria-pressed="false"><span class="sw" style="color:#E0A21A"></span>Measure</button>
       <button data-tool="erase" aria-pressed="false"><span class="sw" style="color:var(--muted);border-style:dashed"></span>Erase</button>
@@ -474,6 +475,7 @@ function buildPiece(poly,marks,ppi,meta,depthIn){
     mirror:marks.mirror?[...C(marks.mirror.a.x,marks.mirror.a.y),...C(marks.mirror.b.x,marks.mirror.b.y)]:null,
     drills:marks.drills.map(d=>C(d.x,d.y)),
     lines:(marks.lines||[]).map(l=>[...C(l.a.x,l.a.y),...C(l.b.x,l.b.y)]),
+    arrows:(marks.arrows||[]).map(a=>[...C(a.a.x,a.a.y),...C(a.b.x,a.b.y)]),
     w:maxX-minX,h:maxY-minY
   };
 }
@@ -514,6 +516,18 @@ function makeDXF(pieces,opt){
     const q=p.grain; g(0,'LINE');g(8,'7');g(10,n(q[0]));g(20,n(q[1]));g(11,n(q[2]));g(21,n(q[3]));
     if(p.mirror){const r=p.mirror;g(0,'LINE');g(8,'6');g(10,n(r[0]));g(20,n(r[1]));g(11,n(r[2]));g(21,n(r[3]));}
     for(const l of p.lines||[]){g(0,'LINE');g(8,'8');g(10,n(l[0]));g(20,n(l[1]));g(11,n(l[2]));g(21,n(l[3]));}
+    // Arrows go out as internal lines on layer 8 - "graphic annotation of placement,
+    // not cut" - shaft plus two barbs, so the direction survives as real geometry.
+    for(const q of p.arrows||[]){
+      const [ax,ay,bx,by]=q;
+      const len=Math.hypot(bx-ax,by-ay)||1, ang=Math.atan2(by-ay,bx-ax);
+      const bl=Math.min(0.4,len*0.3);
+      g(0,'LINE');g(8,'8');g(10,n(ax));g(20,n(ay));g(11,n(bx));g(21,n(by));
+      for(const s of [1,-1]){
+        const t=ang+s*150*Math.PI/180;
+        g(0,'LINE');g(8,'8');g(10,n(bx));g(20,n(by));g(11,n(bx+bl*Math.cos(t)));g(21,n(by+bl*Math.sin(t)));
+      }
+    }
     for(const d of p.drills){g(0,'POINT');g(8,'13');g(10,n(d[0]));g(20,n(d[1]));}
     // Piece System Text, in Gerber's own identifiers. SIZE is upper case and the text
     // is case sensitive, which is why a 'Size:' line was silently ignored.
@@ -696,7 +710,7 @@ const DPR=()=>Math.min(window.devicePixelRatio||1,3);
 const S={
   step:'photo', src:null, corners:[], rect:null, ppi:0, score:null,
   thr:128, invert:false, openR:3, labels:null, comps:[], sel:-1, overlay:null,
-  raw:null, outline:null, marks:{notches:[],grain:null,drills:[],lines:[],measure:null,mirror:null}, edited:false, selV:-1, selB:-1, autoMsg:'',
+  raw:null, outline:null, marks:{notches:[],grain:null,drills:[],lines:[],measure:null,mirror:null,arrows:[]}, edited:false, selV:-1, selB:-1, autoMsg:'',
   tool:'notch', hist:[], pieces:[], drag:null, vs:1, preview:null, previewBoxes:[], editIdx:-1, preEdit:null
 };
 const STEPS=['photo','calibrate','trace','mark','export'];
@@ -708,7 +722,8 @@ const HINTS={
   edge:'Tap along a straight stretch, away from any point, to select the whole run at once, then tap Straighten between to flatten it. Tap right on a point to select just that one; tap a second point and Straighten between replaces everything in between with a straight line (this also closes a dart). Drag near the edge to move a point, or to add one where there isn\'t a point.',
   measure:'Drag between two points to check a measurement against your ruler.',
   mirror:'For a symmetrical piece. Drag to draw the mid line down the centre of the garment, then tap the side you want to keep; the other side is cut away. To reposition it, drag the line itself to slide it, or drag either round end to swing it. The fold exports on layer 6, so AccuMark mirrors it back to the full piece on import.',
-  erase:'Tap a notch, drill hole, line, or grainline to remove it. To remove outline points, use Edit edge.'
+  arrow:'For showing a direction, such as which way a pleat folds. Drag from the tail to the point; it snaps to true vertical or horizontal. Arrows export as internal lines on layer 8, so they draw on the piece but are never cut.',
+  erase:'Tap a notch, drill hole, line, arrow, or grainline to remove it. To remove outline points, use Edit edge.'
 };
 
 function toast(msg){const t=$('toast');t.textContent=msg;t.style.opacity=1;clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.opacity=0,2600);}
@@ -844,6 +859,20 @@ function drawOverlay(ctx,u){
     if(S.drag&&S.drag.type==='mirror'&&dist(S.drag.a,S.drag.b)>=25*u) drawMirror({a:S.drag.a,b:S.drag.b},0.8);
     const LC='#6B4FA0';
     for(const l of S.marks.lines){line(ctx,[l.a.x,l.a.y],[l.b.x,l.b.y],2.5*u,LC);dot(ctx,l.a.x,l.a.y,3*u,LC);dot(ctx,l.b.x,l.b.y,3*u,LC);}
+    const AC='#C2410C';
+    const drawArrow=(q,col)=>{
+      const a=[q.a.x,q.a.y], b=[q.b.x,q.b.y];
+      const len=Math.hypot(b[0]-a[0],b[1]-a[1])||1;
+      const ang=Math.atan2(b[1]-a[1],b[0]-a[0]);
+      const bl=Math.min(0.4*S.ppi,len*0.3);
+      line(ctx,a,b,2.5*u,col);
+      for(const s of [1,-1]){
+        const t=ang+s*150*Math.PI/180;
+        line(ctx,b,[b[0]+bl*Math.cos(t),b[1]+bl*Math.sin(t)],2.5*u,col);
+      }
+    };
+    for(const q of S.marks.arrows||[]) drawArrow(q,AC);
+    if(S.drag&&S.drag.type==='arrow'&&dist(S.drag.a,S.drag.b)>=15*u) drawArrow({a:S.drag.a,b:S.drag.b},AC);
     if(S.drag&&S.drag.type==='line'){const d=S.drag;line(ctx,[d.a.x,d.a.y],[d.b.x,d.b.y],2.5*u,LC);dot(ctx,d.a.x,d.a.y,4*u,d.a.s?'#fff':LC,LC,u);dot(ctx,d.b.x,d.b.y,4*u,d.b.s?'#fff':LC,LC,u);}
     if(S.tool==='edge'){
       const n=P.length; let per=0; for(let i=0;i<n;i++){const a=P[i],b=P[(i+1)%n];per+=Math.hypot(b[0]-a[0],b[1]-a[1]);}
@@ -908,7 +937,7 @@ function showLoupe(e){
   ctx.moveTo(L/2,L/2-14);ctx.lineTo(L/2,L/2-4);ctx.moveTo(L/2,L/2+4);ctx.lineTo(L/2,L/2+14);ctx.stroke();
 }
 function hideLoupe(){loupe.style.display='none';}
-function snapState(){return JSON.stringify({n:S.marks.notches,g:S.marks.grain,d:S.marks.drills,l:S.marks.lines,m:S.marks.mirror,o:S.outline,e:S.edited});}
+function snapState(){return JSON.stringify({n:S.marks.notches,g:S.marks.grain,d:S.marks.drills,l:S.marks.lines,m:S.marks.mirror,ar:S.marks.arrows,o:S.outline,e:S.edited});}
 function pushHist(st){S.hist.push(st);if(S.hist.length>60)S.hist.shift();}
 function snapshot(){pushHist(snapState());}
 function snapLinePt(p,u){
@@ -960,7 +989,7 @@ view.addEventListener('pointerdown',e=>{
       else S.drag={type:t,a:{...p},b:{...p}};
     }
     else if(t==='grain'||t==='measure'||t==='mirror') S.drag={type:t,a:{...p},b:{...p}};
-    else if(t==='line'){const a=snapLinePt(p,u);S.drag={type:'line',a,b:{...a}};}
+    else if(t==='line'||t==='arrow'){const a=snapLinePt(p,u);S.drag={type:t,a,b:{...a}};}
     else if(t==='edge'){
       // Generous targets: any touch near the edge picks the closest point.
       const P=S.outline, r=nearestOnPoly(P,p.x,p.y);
@@ -1003,7 +1032,7 @@ view.addEventListener('pointermove',e=>{
     }
   }
   else if(d.type==='grain'||d.type==='measure'||d.type==='mirror') d.b={...p};
-  else if(d.type==='line') d.b=snapLinePt(p,1/S.k);
+  else if(d.type==='line'||d.type==='arrow') d.b=snapLinePt(p,1/S.k);
   else if(d.type==='vertex'){
     if(!d.moved&&dist(p,d.p0)>4/S.k){
       d.moved=true;
@@ -1073,6 +1102,15 @@ function endDrag(e){
   }
   if(d.type==='measure'){ if(dist(d.a,d.b)>=5*u) S.marks.measure={a:d.a,b:d.b}; }
   if(d.type==='erase') eraseAt(d.p,u);
+  if(d.type==='arrow'){
+    if(dist(d.a,d.b)<15*u) toast('Drag farther to draw the arrow. Start at the tail, lift at the point.');
+    else{
+      let b=d.b;
+      if(!b.s){const ang=Math.atan2(b.y-d.a.y,b.x-d.a.x),sn=Math.round(ang/(Math.PI/2))*(Math.PI/2);
+        if(Math.abs(ang-sn)<2*Math.PI/180){const L=dist(d.a,b);b={x:d.a.x+L*Math.cos(sn),y:d.a.y+L*Math.sin(sn)};}}
+      snapshot();S.marks.arrows.push({a:{x:d.a.x,y:d.a.y},b:{x:b.x,y:b.y}});
+    }
+  }
   if(d.type==='line'){
     if(dist(d.a,d.b)<15*u) toast('Drag farther to draw a line.');
     else{
@@ -1157,6 +1195,7 @@ function splitAtMirror(p){
   S.marks.notches=S.marks.notches.filter(on);
   S.marks.drills=S.marks.drills.filter(on);
   S.marks.lines=(S.marks.lines||[]).filter(l=>on(l.a)||on(l.b));
+  S.marks.arrows=(S.marks.arrows||[]).filter(a=>on(a.a)||on(a.b));
   S.edited=true; S.selV=-1; S.selB=-1;
   updateMarkStatus(); render();
   toast(`Kept that half: ${before} points down to ${clipped.length}. The fold exports on layer 6 for AccuMark to mirror.`);
@@ -1168,11 +1207,13 @@ function eraseAt(p,u){
   if(S.marks.grain){const dd=segDist(p,S.marks.grain.a,S.marks.grain.b);if(dd<bd){bd=dd;best=['g'];}}
   if(S.marks.mirror){const dd=segDist(p,S.marks.mirror.a,S.marks.mirror.b);if(dd<bd){bd=dd;best=['m'];}}
   S.marks.lines.forEach((l,i)=>{const dd=segDist(p,l.a,l.b);if(dd<bd){bd=dd;best=['l',i];}});
+  (S.marks.arrows||[]).forEach((q,i)=>{const dd=segDist(p,q.a,q.b);if(dd<bd){bd=dd;best=['ar',i];}});
   if(!best){toast('Nothing to erase there.');return;}
   snapshot();
   if(best[0]==='n') S.marks.notches.splice(best[1],1);
   else if(best[0]==='d') S.marks.drills.splice(best[1],1);
   else if(best[0]==='l') S.marks.lines.splice(best[1],1);
+  else if(best[0]==='ar') S.marks.arrows.splice(best[1],1);
   else if(best[0]==='m') S.marks.mirror=null;
   else S.marks.grain=null;
 }
@@ -1398,7 +1439,7 @@ $('traceBtn').onclick=()=>work(()=>{
   const pts=traceComponent(S.labels,S.rect.w,S.rect.h,c.id,c.sx,c.sy);
   S.raw=smoothClosed(pts,2,2);
   S.outline=simplifyClosed(S.raw,tolPx());
-  S.marks={notches:[],grain:null,drills:[],lines:[],measure:null,mirror:null}; S.hist=[]; S.edited=false; S.selV=-1; S.selB=-1;
+  S.marks={notches:[],grain:null,drills:[],lines:[],measure:null,mirror:null,arrows:[]}; S.hist=[]; S.edited=false; S.selV=-1; S.selB=-1;
   $('pName').value='';$('pSize').value=$('pSize').value||'';$('pQty').value=1;
   go('mark');
 });
@@ -1422,7 +1463,7 @@ function updateMarkStatus(){
   $('scaleRow').style.display=(S.tool==='measure'&&S.marks.measure)?'flex':'none';
   const m=S.marks, parts=[HINTS[S.tool]];
   if(S.tool==='edge'){const n=S.outline.length;let per=0;for(let i=0;i<n;i++){const a=S.outline[i],b=S.outline[(i+1)%n];per+=Math.hypot(b[0]-a[0],b[1]-a[1]);} if(per/n*S.k<7) parts.push('Pinch to zoom in to see the points.');}
-  parts.push(`${S.outline.length} points, ${m.notches.length} notch${m.notches.length===1?'':'es'}, ${m.lines.length} line${m.lines.length===1?'':'s'}, ${m.drills.length} drill hole${m.drills.length===1?'':'s'}, ${m.grain?'grainline set':'no grainline yet (faint line shows the default)'}.`);
+  parts.push(`${S.outline.length} points, ${m.notches.length} notch${m.notches.length===1?'':'es'}, ${m.lines.length} line${m.lines.length===1?'':'s'}, ${(m.arrows||[]).length} arrow${(m.arrows||[]).length===1?'':'s'}, ${m.drills.length} drill hole${m.drills.length===1?'':'s'}, ${m.grain?'grainline set':'no grainline yet (faint line shows the default)'}.`);
   $('markStatus').textContent=parts.join(' ');
 }
 function shortPath(i,j,n){ // indices strictly between i and j along the shorter way round
@@ -1478,7 +1519,7 @@ $('delPt').onclick=()=>{
 $('autoGrain').onclick=()=>{ if(!S.outline) return; snapshot(); S.marks.grain=defaultGrain(S.outline); updateMarkStatus(); render(); };
 $('undo').onclick=()=>{
   const s=S.hist.pop(); if(!s){toast('Nothing to undo.');return;}
-  const o=JSON.parse(s); S.marks.notches=o.n; S.marks.grain=o.g; S.marks.drills=o.d; S.marks.lines=o.l||[]; S.marks.mirror=o.m||null; if(o.o) S.outline=o.o; S.edited=!!o.e; S.selV=-1; S.selB=-1; updateMarkStatus(); render();
+  const o=JSON.parse(s); S.marks.notches=o.n; S.marks.grain=o.g; S.marks.drills=o.d; S.marks.lines=o.l||[]; S.marks.mirror=o.m||null; S.marks.arrows=o.ar||[]; if(o.o) S.outline=o.o; S.edited=!!o.e; S.selV=-1; S.selB=-1; updateMarkStatus(); render();
 };
 $('smooth').oninput=()=>{ if(!S.raw||S.edited) return; S.outline=simplifyClosed(S.raw,tolPx()); updateMarkStatus(); render(); };
 $('nDepth').oninput=()=>render();
@@ -1531,7 +1572,7 @@ function renderPieceList(){
   if(!S.pieces.length){ul.innerHTML='<li>No pieces saved yet.</li>';return;}
   S.pieces.forEach((p,i)=>{
     const li=document.createElement('li');
-    li.innerHTML=`<div><div>${cleanName(p.name,'PIECE-'+(i+1))}${p.size?' ('+p.size.replace(/</g,'')+')':''}</div><div class="meta">${p.w.toFixed(2)} × ${p.h.toFixed(2)} in, ${p.notches.length} notches, ${(p.lines||[]).length} lines, qty ${p.qty}</div></div>`;
+    li.innerHTML=`<div><div>${cleanName(p.name,'PIECE-'+(i+1))}${p.size?' ('+p.size.replace(/</g,'')+')':''}</div><div class="meta">${p.w.toFixed(2)} × ${p.h.toFixed(2)} in, ${p.notches.length} notches, ${(p.lines||[]).length} lines, ${(p.arrows||[]).length} arrows, qty ${p.qty}</div></div>`;
     const ed=document.createElement('button');ed.textContent='Edit';
     ed.onclick=()=>editPiece(i);
     li.appendChild(ed);
@@ -1595,7 +1636,7 @@ function clearPhoto(alsoPieces){
   S.src=null; S.corners=[]; S.rect=null; S.ppi=0; S.score=null;
   S.labels=null; S.comps=[]; S.sel=-1; S.overlay=null;
   S.raw=null; S.outline=null; S.preview=null;
-  S.marks={notches:[],grain:null,drills:[],lines:[],measure:null,mirror:null};
+  S.marks={notches:[],grain:null,drills:[],lines:[],measure:null,mirror:null,arrows:[]};
   S.hist=[]; S.edited=false; S.selV=-1; S.selB=-1; S.autoMsg='';
   if(alsoPieces){S.pieces=[];S.previewBoxes=[];}
   go('photo');
