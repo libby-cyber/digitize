@@ -137,8 +137,8 @@ font-size:15px;color:var(--muted);background:#fff;min-height:60px;outline:none;-
   <div class="pane" data-pane="calibrate">
     <p>A box is placed around the piece automatically. Drag anywhere with one finger to move the nearest corner; it snaps to a grid crossing when you let go. Use two fingers to zoom and move around.</p>
     <div class="row">
-      <label class="f">Squares across<input id="rectW" type="number" inputmode="decimal" placeholder="e.g. 12" min="0.5" step="0.5"></label>
-      <label class="f">Squares down<input id="rectH" type="number" inputmode="decimal" placeholder="e.g. 18" min="0.5" step="0.5"></label>
+      <label class="f">Squares across<input id="rectW" type="number" inputmode="numeric" placeholder="e.g. 12" min="1" step="1"></label>
+      <label class="f">Squares down<input id="rectH" type="number" inputmode="numeric" placeholder="e.g. 18" min="1" step="1"></label>
       <label class="f">Main square size<select id="sqSize">
         <option value="1" selected>1 in</option>
         <option value="0.5">1/2 in</option>
@@ -149,6 +149,8 @@ font-size:15px;color:var(--muted);background:#fff;min-height:60px;outline:none;-
     <label class="chk"><input type="checkbox" id="gridSnap" checked> Snap points to grid intersections</label>
     <p class="status" id="calStatus">0 of 4 points</p>
     <div class="row">
+      <button class="btn ghost" id="halveSq">Halve count</button>
+      <button class="btn ghost" id="doubleSq">Double count</button>
       <button class="btn ghost" id="clearPts">Reset box</button>
       <button class="btn" id="straighten" disabled>Straighten photo</button>
     </div>
@@ -647,7 +649,7 @@ function countSquares(d,w,h,Hq,along){ // Hq maps unit square (u,v) -> image; al
   const bands=[]; for(let v=-0.03;v<=1.031;v+=0.01) bands.push(v);
   // For each band, high-pass the brightness along the edge so thin bright lines stand out and
   // broad things (paper, shadows) don't; then sum across bands. Grid lines run the full length and add up.
-  const k=Math.max(3,Math.round(N/60)), x=new Float64Array(N), xr=new Float64Array(N), row=new Float64Array(N), cs=new Float64Array(N+1), ok=new Uint8Array(N);
+  const k=Math.max(3,Math.round(N/60)), x=new Float64Array(N), row=new Float64Array(N), cs=new Float64Array(N+1), ok=new Uint8Array(N);
   for(const b of bands){
     let valid=0;
     for(let i=0;i<N;i++){
@@ -660,9 +662,6 @@ function countSquares(d,w,h,Hq,along){ // Hq maps unit square (u,v) -> image; al
       if(!ok[i]) continue;
       const a=Math.max(0,i-k),c=Math.min(N-1,i+k), m=(cs[c+1]-cs[a])/(c-a+1);
       x[i]+=Math.max(0,Math.min(60,row[i]-m));
-      // Same high-pass, uncapped. The 60 cap saturates every line, which hides the
-      // main-versus-sub brightness gap the grid picker below depends on.
-      xr[i]+=Math.max(0,row[i]-m);
     }
   }
   let mean=0; for(let i=0;i<N;i++) mean+=x[i]; mean/=N; for(let i=0;i<N;i++) x[i]-=mean;
@@ -680,47 +679,13 @@ function countSquares(d,w,h,Hq,along){ // Hq maps unit square (u,v) -> image; al
       for(let q=lo;q<=hi;q++) if(ac[q]>bv){bv=ac[q];bj=q;} if(bj>5&&bj<maxLag&&bv>0) per=refine(bj)/m;}
     const n=(N-1)/per; return {lag:j,n,strength:ac[j]/gmax,spacing:per};
   });
-  // The strongest repeat is always the FINEST pitch, so on a mat with half-size lines
-  // inside its main squares it is the sub-division, and the count comes back doubled.
-  // Tell them apart by prominence: lay the detected lattice over the high-passed
-  // profile and compare alternate lines. If every other line is clearly brighter, the
-  // main grid is twice that spacing. If the lines are uniform the two are genuinely
-  // indistinguishable from the photo, so keep the fine pitch and let the whole-number
-  // check decide whether to ask for a hand count.
-  // Read each lattice line as the best pixel within +-2, not the one the rounded
-  // position happens to land on: a non-integer period drifts on and off a one-pixel
-  // line and fakes an alternating pattern on a perfectly uniform grid.
-  // Snap each lattice line to the brightest pixel within a quarter period - wide enough
-  // to absorb the drift of a non-integer period over a long edge, still well inside half
-  // a period so it cannot reach the neighbouring line.
-  const peakAt=(t,per)=>{
-    const i=Math.round(t), r=Math.max(2,Math.round(per/4)); let m=0;
-    for(let j=i-r;j<=i+r;j++) if(j>=0&&j<N) m=Math.max(m,xr[j]);
-    return m;
-  };
-  const phaseOf=per=>{
-    let bo=0,bv=-Infinity;
-    for(let o=0;o<Math.round(per);o++){
-      let s=0,cnt=0;
-      for(let t=o;t<N;t+=per){s+=peakAt(t,per);cnt++;}
-      if(cnt&&s/cnt>bv){bv=s/cnt;bo=o;}
-    }
-    return bo;
-  };
-  const altMean=(per,o,parity)=>{
-    let s=0,cnt=0;
-    for(let k=parity;;k+=2){const t=o+k*per; if(t>=N) break; s+=peakAt(t,per);cnt++;}
-    return cnt>=2?s/cnt:0;
-  };
-  let c=cands.reduce((p,q)=>q.strength>p.strength?q:p);
-  for(let step=0;step<2;step++){
-    const per=c.spacing, o=phaseOf(per);
-    const hi=Math.max(altMean(per,o,0),altMean(per,o,1)), lo=Math.min(altMean(per,o,0),altMean(per,o,1));
-    if(!(lo>0)||hi/lo<1.15) break;
-    const dbl=cands.find(q=>Math.abs(q.spacing-per*2)<=Math.max(2,per*0.16));
-    if(!dbl) break;
-    c=dbl;
-  }
+  // The strongest repeat is the finest pitch present. On a mat with half-size lines
+  // inside its main squares that is the sub-division, so the count can come back
+  // doubled. Telling the two apart from the photo is genuinely ambiguous - a 1in mat
+  // ruled every 1/2in and a 1/2in mat differ only in how bold the lines are, and
+  // leaning on that was wrong in BOTH directions and confident about it. So report
+  // what was measured and let Halve/Double correct it; the choice is remembered.
+  const c=cands.reduce((p,q)=>q.strength>p.strength?q:p);
   return finishCount(c,cands);
 }
 function finishCount(c,cands){
@@ -1357,6 +1322,26 @@ function snapCorner(i){
   const r=snapToIntersection(S.src.data.data,S.src.w,S.src.h,c.x,c.y,R);
   if(r) S.corners[i]=r;
 }
+// How many times the detector's reading has to be halved for this mat. A mat ruled
+// inside its main squares reads doubled every time, so remember the correction once
+// rather than asking for it on every photo.
+let gridDiv=1;
+try{ const v=parseFloat(window['local'+'Storage'].getItem('digitize.gridDiv')); if(v===1||v===2||v===4) gridDiv=v; }catch(e){}
+function setGridDiv(v){ gridDiv=v; try{ window['local'+'Storage'].setItem('digitize.gridDiv',String(v)); }catch(e){} }
+// Apply the remembered correction to a detected count, only if it stays whole.
+function applyGridDiv(c){ if(gridDiv===1||!c) return c; const r=c/gridDiv; return Number.isInteger(r)&&r>=1?r:c; }
+function scaleSquares(mult){
+  const w=+$('rectW').value, h=+$('rectH').value;
+  if(!(w>0&&h>0)){toast('Place the box first, then adjust the count.');return;}
+  const nw=w*mult, nh=h*mult;
+  if(!(Number.isInteger(nw)&&Number.isInteger(nh)&&nw>=1&&nh>=1)){toast('That would not leave a whole number of squares.');return;}
+  $('rectW').value=nw; $('rectH').value=nh;
+  setGridDiv(Math.min(4,Math.max(1, mult<1 ? gridDiv*2 : gridDiv/2)));
+  S.autoMsg='manual'; updateCalStatus(); render();
+  toast(`Now ${nw} x ${nh} squares. Remembered for the next photo.`);
+}
+$('halveSq').onclick=()=>scaleSquares(0.5);
+$('doubleSq').onclick=()=>scaleSquares(2);
 function autoCount(){
   S.autoMsg='';
   if(S.corners.length<4) return;
@@ -1364,7 +1349,7 @@ function autoCount(){
     const o=orderCorners(S.corners);
     const Hq=homography([[0,0],[1,0],[1,1],[0,1]],o.map(p=>[p.x,p.y]));
     const [a,b]=pairCounts(countSquares(S.src.data.data,S.src.w,S.src.h,Hq,'u'),countSquares(S.src.data.data,S.src.w,S.src.h,Hq,'v'));
-    if(a&&b&&a.confident&&b.confident){$('rectW').value=a.count;$('rectH').value=b.count;S.autoMsg='auto';}
+    if(a&&b&&a.confident&&b.confident){$('rectW').value=applyGridDiv(a.count);$('rectH').value=applyGridDiv(b.count);S.autoMsg='auto';}
     else S.autoMsg='fail';
   }catch(e){S.autoMsg='fail';}
 }
