@@ -647,7 +647,7 @@ function countSquares(d,w,h,Hq,along){ // Hq maps unit square (u,v) -> image; al
   const bands=[]; for(let v=-0.03;v<=1.031;v+=0.01) bands.push(v);
   // For each band, high-pass the brightness along the edge so thin bright lines stand out and
   // broad things (paper, shadows) don't; then sum across bands. Grid lines run the full length and add up.
-  const k=Math.max(3,Math.round(N/60)), x=new Float64Array(N), row=new Float64Array(N), cs=new Float64Array(N+1), ok=new Uint8Array(N);
+  const k=Math.max(3,Math.round(N/60)), x=new Float64Array(N), xr=new Float64Array(N), row=new Float64Array(N), cs=new Float64Array(N+1), ok=new Uint8Array(N);
   for(const b of bands){
     let valid=0;
     for(let i=0;i<N;i++){
@@ -660,6 +660,9 @@ function countSquares(d,w,h,Hq,along){ // Hq maps unit square (u,v) -> image; al
       if(!ok[i]) continue;
       const a=Math.max(0,i-k),c=Math.min(N-1,i+k), m=(cs[c+1]-cs[a])/(c-a+1);
       x[i]+=Math.max(0,Math.min(60,row[i]-m));
+      // Same high-pass, uncapped. The 60 cap saturates every line, which hides the
+      // main-versus-sub brightness gap the grid picker below depends on.
+      xr[i]+=Math.max(0,row[i]-m);
     }
   }
   let mean=0; for(let i=0;i<N;i++) mean+=x[i]; mean/=N; for(let i=0;i<N;i++) x[i]-=mean;
@@ -687,7 +690,7 @@ function countSquares(d,w,h,Hq,along){ // Hq maps unit square (u,v) -> image; al
   // Read each lattice line as the best pixel within +-2, not the one the rounded
   // position happens to land on: a non-integer period drifts on and off a one-pixel
   // line and fakes an alternating pattern on a perfectly uniform grid.
-  const peakAt=t=>{const i=Math.round(t); let m=0; for(let j=i-2;j<=i+2;j++) if(j>=0&&j<N) m=Math.max(m,Math.max(0,x[j])); return m;};
+  const peakAt=t=>{const i=Math.round(t); let m=0; for(let j=i-2;j<=i+2;j++) if(j>=0&&j<N) m=Math.max(m,xr[j]); return m;};
   const phaseOf=per=>{
     let bo=0,bv=-Infinity;
     for(let o=0;o<Math.round(per);o++){
@@ -706,7 +709,7 @@ function countSquares(d,w,h,Hq,along){ // Hq maps unit square (u,v) -> image; al
   for(let step=0;step<2;step++){
     const per=c.spacing, o=phaseOf(per);
     const hi=Math.max(altMean(per,o,0),altMean(per,o,1)), lo=Math.min(altMean(per,o,0),altMean(per,o,1));
-    if(!(lo>0)||hi/lo<1.25) break;
+    if(!(lo>0)||hi/lo<1.15) break;
     const dbl=cands.find(q=>Math.abs(q.spacing-per*2)<=Math.max(2,per*0.16));
     if(!dbl) break;
     c=dbl;
