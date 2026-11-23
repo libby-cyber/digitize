@@ -677,15 +677,19 @@ function countSquares(d,w,h,Hq,along){ // Hq maps unit square (u,v) -> image; al
       for(let q=lo;q<=hi;q++) if(ac[q]>bv){bv=ac[q];bj=q;} if(bj>5&&bj<maxLag&&bv>0) per=refine(bj)/m;}
     const n=(N-1)/per; return {lag:j,n,strength:ac[j]/gmax,spacing:per};
   });
-  // Default choice: the main grid = strongest repeat, stepping down to half while the half is just as strong.
-  const near=t=>cands.filter(c=>Math.abs(c.lag-t)<=Math.max(2,t*0.08)).sort((x,y)=>y.strength-x.strength)[0];
-  let c=cands.reduce((x,y)=>y.strength>x.strength?y:x);
-  for(;;){const hf=near(c.lag/2); if(hf&&hf.strength>=0.85*c.strength) c=hf; else break;}
+  // The main grid is the strongest repeat, full stop. This used to step down to the
+  // half period whenever that peak was 85% as strong, which is precisely what a mat
+  // with half-size lines inside its main squares looks like - so the count came back
+  // doubled and corners landed on half squares.
+  const c=cands.reduce((x,y)=>y.strength>x.strength?y:x);
   return finishCount(c,cands);
 }
 function finishCount(c,cands){
-  const r=Math.round(c.n*2)/2;
-  return {count:r,exact:c.n,spacing:c.spacing,strength:c.strength,cands,confident:r>=0.5&&Math.abs(c.n-r)<0.15};
+  // Corners snap to grid intersections, so a rectangle spans a WHOLE number of main
+  // squares. This used to round to the nearest half and call a half confident, which
+  // dressed up a wrong period as a real reading instead of asking for a hand count.
+  const r=Math.round(c.n);
+  return {count:r,exact:c.n,spacing:c.spacing,strength:c.strength,cands,confident:r>=1&&Math.abs(c.n-r)<0.15};
 }
 // Grid squares are square, so the spacing across and down must agree. If they don't, one direction locked
 // onto the wrong repeat; swap in the candidate that best matches the other direction.
