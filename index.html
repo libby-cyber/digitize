@@ -719,7 +719,7 @@ const S={
   step:'photo', src:null, corners:[], rect:null, ppi:0, score:null,
   thr:128, invert:false, openR:3, labels:null, comps:[], sel:-1, overlay:null,
   raw:null, outline:null, marks:{notches:[],grain:null,drills:[],lines:[],measure:null,mirror:null,arrows:[]}, edited:false, selV:-1, selB:-1, autoMsg:'',
-  tool:'notch', hist:[], pieces:[], drag:null, vs:1, preview:null, previewBoxes:[], editIdx:-1, preEdit:null
+  tool:'notch', hist:[], pieces:[], drag:null, vs:1, preview:null, previewBoxes:[], editIdx:-1, preEdit:null, sqManual:false, measured:null
 };
 const STEPS=['photo','calibrate','trace','mark','export'];
 const HINTS={
@@ -1336,6 +1336,7 @@ function scaleSquares(mult){
   const nw=w*mult, nh=h*mult;
   if(!(Number.isInteger(nw)&&Number.isInteger(nh)&&nw>=1&&nh>=1)){toast('That would not leave a whole number of squares.');return;}
   $('rectW').value=nw; $('rectH').value=nh;
+  S.sqManual=true;
   setGridDiv(Math.min(4,Math.max(1, mult<1 ? gridDiv*2 : gridDiv/2)));
   S.autoMsg='manual'; updateCalStatus(); render();
   toast(`Now ${nw} x ${nh} squares. Remembered for the next photo.`);
@@ -1349,18 +1350,29 @@ function autoCount(){
     const o=orderCorners(S.corners);
     const Hq=homography([[0,0],[1,0],[1,1],[0,1]],o.map(p=>[p.x,p.y]));
     const [a,b]=pairCounts(countSquares(S.src.data.data,S.src.w,S.src.h,Hq,'u'),countSquares(S.src.data.data,S.src.w,S.src.h,Hq,'v'));
-    if(a&&b&&a.confident&&b.confident){$('rectW').value=applyGridDiv(a.count);$('rectH').value=applyGridDiv(b.count);S.autoMsg='auto';}
+    if(a&&b&&a.confident&&b.confident){
+      S.measured=[a.count,b.count];
+      // Never overwrite a count that was set by hand or corrected with Halve/Double.
+      // autoCount re-runs on every corner nudge, so without this a correction lasts
+      // only until the next time the box is touched.
+      if(S.sqManual){ S.autoMsg='manual'; return; }
+      $('rectW').value=applyGridDiv(a.count); $('rectH').value=applyGridDiv(b.count);
+      S.autoMsg='auto';
+    }
     else S.autoMsg='fail';
   }catch(e){S.autoMsg='fail';}
 }
 function updateCalStatus(){
   const n=S.corners.length, R=rectDims();
+  // Say what was measured as well as what is shown, so a wrong reading is visible
+  // rather than something you only discover from a piece coming out the wrong size.
+  const meas=S.measured&&(S.measured[0]!==R.cw||S.measured[1]!==R.ch)
+    ? ` Measured ${S.measured[0]} × ${S.measured[1]}.` : '';
   $('calStatus').textContent=n<4?`${n} of 4 points. Points snap to the nearest grid intersection.`
     :S.autoMsg==='fail'?'Couldn\'t count the squares automatically. Count them and enter the numbers above.'
-    :`${S.autoMsg==='auto'?'Counted':'Using'} ${R.cw||'?'} × ${R.ch||'?'} squares = ${R.w?fmtIn(R.w):'?'} × ${R.h?fmtIn(R.h):'?'}. Compare with the ruler on your mat before straightening.`;
+    :`${S.autoMsg==='auto'?'Counted':'Using'} ${R.cw||'?'} × ${R.ch||'?'} squares = ${R.w?fmtIn(R.w):'?'} × ${R.h?fmtIn(R.h):'?'}.${meas} Compare with the ruler on your mat before straightening.`;
   $('straighten').disabled=n<4;
 }
-$('clearPts').onclick=()=>work(()=>{autoBox();updateCalStatus();});
 // Place a box around the paper automatically, snapped to grid crossings.
 function autoBox(){
   const {w,h,data}=S.src, d=data.data, k=Math.min(1,700/Math.max(w,h)), sw=Math.max(1,Math.round(w*k)), sh=Math.max(1,Math.round(h*k));
@@ -1393,7 +1405,8 @@ $('sqSize').addEventListener('change',()=>{try{
   if(window.storage) window.storage.set('sqSize',$('sqSize').value,false);
   else window['local'+'Storage'].setItem('sqSize',$('sqSize').value);
 }catch(e){}});
-$('rectW').oninput=$('rectH').oninput=$('sqSize').onchange=()=>{if(S.autoMsg==='auto')S.autoMsg='manual';updateCalStatus();render();};
+$('rectW').oninput=$('rectH').oninput=()=>{S.sqManual=true;S.autoMsg='manual';updateCalStatus();render();};
+$('sqSize').onchange=()=>{if(S.autoMsg==='auto')S.autoMsg='manual';updateCalStatus();render();};
 $('straighten').onclick=()=>work(()=>{
   const R=rectDims(), rw=R.w, rh=R.h;
   if(!(rw>0&&rh>0)) throw new Error('Enter how many grid squares the rectangle spans across and down.');
@@ -1665,7 +1678,7 @@ function clearPhoto(alsoPieces){
   S.labels=null; S.comps=[]; S.sel=-1; S.overlay=null;
   S.raw=null; S.outline=null; S.preview=null;
   S.marks={notches:[],grain:null,drills:[],lines:[],measure:null,mirror:null,arrows:[]};
-  S.hist=[]; S.edited=false; S.selV=-1; S.selB=-1; S.autoMsg='';
+  S.hist=[]; S.edited=false; S.selV=-1; S.selB=-1; S.autoMsg=''; S.sqManual=false; S.measured=null;
   if(alsoPieces){S.pieces=[];S.previewBoxes=[];}
   go('photo');
 }
