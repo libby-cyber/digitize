@@ -690,19 +690,26 @@ function countSquares(d,w,h,Hq,along){ // Hq maps unit square (u,v) -> image; al
   // Read each lattice line as the best pixel within +-2, not the one the rounded
   // position happens to land on: a non-integer period drifts on and off a one-pixel
   // line and fakes an alternating pattern on a perfectly uniform grid.
-  const peakAt=t=>{const i=Math.round(t); let m=0; for(let j=i-2;j<=i+2;j++) if(j>=0&&j<N) m=Math.max(m,xr[j]); return m;};
+  // Snap each lattice line to the brightest pixel within a quarter period - wide enough
+  // to absorb the drift of a non-integer period over a long edge, still well inside half
+  // a period so it cannot reach the neighbouring line.
+  const peakAt=(t,per)=>{
+    const i=Math.round(t), r=Math.max(2,Math.round(per/4)); let m=0;
+    for(let j=i-r;j<=i+r;j++) if(j>=0&&j<N) m=Math.max(m,xr[j]);
+    return m;
+  };
   const phaseOf=per=>{
     let bo=0,bv=-Infinity;
     for(let o=0;o<Math.round(per);o++){
       let s=0,cnt=0;
-      for(let t=o;t<N;t+=per){s+=peakAt(t);cnt++;}
+      for(let t=o;t<N;t+=per){s+=peakAt(t,per);cnt++;}
       if(cnt&&s/cnt>bv){bv=s/cnt;bo=o;}
     }
     return bo;
   };
   const altMean=(per,o,parity)=>{
     let s=0,cnt=0;
-    for(let k=parity;;k+=2){const t=o+k*per; if(t>=N) break; s+=peakAt(t);cnt++;}
+    for(let k=parity;;k+=2){const t=o+k*per; if(t>=N) break; s+=peakAt(t,per);cnt++;}
     return cnt>=2?s/cnt:0;
   };
   let c=cands.reduce((p,q)=>q.strength>p.strength?q:p);
